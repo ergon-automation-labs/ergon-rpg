@@ -1,4 +1,5 @@
 MIX_BIN ?= $(shell which mix 2>/dev/null || echo /Users/abby/.local/share/mise/shims/mix)
+VERSION ?= $(shell grep 'version:' mix.exs | head -1 | sed 's/.*"\([^"]*\)".*/\1/')
 SCRIPTS_DIRECTORY ?= $(abspath $(CURDIR)/../scripts)
 
 .PHONY: setup help deps test credo dialyzer coverage check format clean release publish-release setup-hooks setup-db reset-db logs push-and-publish
@@ -102,30 +103,23 @@ publish-release: release
 	@echo "Publishing release to GitHub"
 	@echo "==============================================="
 	@echo ""
-
-	@# Get version from release metadata
-	@VERSION=$$(cat _build/prod/rel/rpg_bot/releases/RELEASES | tail -1 | cut -d' ' -f2); \
-	echo "Version: $$VERSION"; \
-	\
-	# Create tarball
-	echo "Creating release tarball..."; \
-	tar -czf rpg_bot-$$VERSION.tar.gz -C _build/prod/rel rpg_bot/; \
-	echo "✓ Tarball created: rpg_bot-$$VERSION.tar.gz"; \
-	echo ""; \
-	\
-	# Create GitHub release
-	echo "Creating GitHub release v$$VERSION..."; \
-	gh release create v$$VERSION rpg_bot-$$VERSION.tar.gz \
-		--title "Release v$$VERSION" \
-		--notes "RPG Bot Elixir release v$$VERSION. Download and deploy with Jenkins." \
-		--draft=false; \
-	echo "✓ Release published to GitHub"; \
-	echo ""; \
-	echo "Next steps:"; \
-	echo "1. Jenkins will automatically detect the new release"; \
-	echo "2. Trigger deployment in Jenkins UI or wait for auto-deployment"; \
-	echo "3. Check deployment status: make jenkins-logs"; \
-	echo ""
+	@echo "Version: $(VERSION)"
+	@echo "Creating release tarball..."
+	@tar -czf rpg_bot-$(VERSION).tar.gz -C _build/prod/rel rpg_bot/
+	@echo "✓ Tarball created: rpg_bot-$(VERSION).tar.gz"
+	@echo ""
+	@echo "Creating GitHub release v$(VERSION)..."
+	@gh release create v$(VERSION) rpg_bot-$(VERSION).tar.gz \
+		--title "Release v$(VERSION)" \
+		--notes "RPG Bot Elixir release v$(VERSION). Download and deploy with Jenkins." \
+		--draft=false
+	@echo "✓ Release published to GitHub"
+	@echo ""
+	@echo "Next steps:"
+	@echo "1. Jenkins will automatically detect the new release"
+	@echo "2. Trigger deployment in Jenkins UI or wait for auto-deployment"
+	@echo "3. Check deployment status: make jenkins-logs"
+	@echo ""
 
 push-and-publish:
 	@git push && $(MAKE) publish-release
