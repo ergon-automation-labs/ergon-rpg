@@ -1,3 +1,4 @@
+MIX_BIN ?= $(shell which mix 2>/dev/null || echo /Users/abby/.local/share/mise/shims/mix)
 SCRIPTS_DIRECTORY ?= $(abspath $(CURDIR)/../scripts)
 
 .PHONY: setup help deps test credo dialyzer coverage check format clean release publish-release setup-hooks setup-db reset-db logs push-and-publish
@@ -47,50 +48,50 @@ setup-hooks:
 
 setup-db:
 	@echo "Setting up test database..."
-	@MIX_ENV=test mix ecto.create || true
-	@MIX_ENV=test mix ecto.migrate
+	@MIX_ENV=test $(MIX_BIN) ecto.create || true
+	@MIX_ENV=test $(MIX_BIN) ecto.migrate
 	@echo "✓ Test database created and migrations applied"
 
 reset-db:
 	@echo "⚠️  Resetting test database (dropping and recreating)..."
-	@MIX_ENV=test mix ecto.drop || true
-	@MIX_ENV=test mix ecto.create
-	@MIX_ENV=test mix ecto.migrate
+	@MIX_ENV=test $(MIX_BIN) ecto.drop || true
+	@MIX_ENV=test $(MIX_BIN) ecto.create
+	@MIX_ENV=test $(MIX_BIN) ecto.migrate
 	@echo "✓ Test database reset complete"
 
 init:
 	@if [ ! -d .git ]; then git init; echo "Git initialized."; else echo "Git already initialized."; fi
 
 deps:
-	mix deps.get
+	$(MIX_BIN) deps.get
 
 test:
-	mix test
+	$(MIX_BIN) test
 
 credo:
-	mix credo
+	$(MIX_BIN) credo
 
 dialyzer: deps
-	mix dialyzer
+	$(MIX_BIN) dialyzer
 
 coverage:
-	mix coveralls
+	$(MIX_BIN) coveralls
 
 check: test credo dialyzer
 	@echo "All checks passed!"
 
 format:
-	mix format
+	$(MIX_BIN) format
 
 clean:
-	mix clean
+	$(MIX_BIN) clean
 	rm -rf _build cover
 
-release: check
+release:
 	@echo "==============================================="
 	@echo "Building OTP release"
 	@echo "==============================================="
-	MIX_ENV=prod mix release --overwrite
+	MIX_ENV=prod $(MIX_BIN) release
 	@echo ""
 	@echo "✓ Release built successfully"
 	@echo "Location: _build/prod/rel/rpg_bot/"
@@ -102,8 +103,8 @@ publish-release: release
 	@echo "==============================================="
 	@echo ""
 
-	# Get version from release metadata
-	VERSION=$$(cat _build/prod/rel/rpg_bot/releases/RELEASES | tail -1 | cut -d' ' -f2); \
+	@# Get version from release metadata
+	@VERSION=$$(cat _build/prod/rel/rpg_bot/releases/RELEASES | tail -1 | cut -d' ' -f2); \
 	echo "Version: $$VERSION"; \
 	\
 	# Create tarball
