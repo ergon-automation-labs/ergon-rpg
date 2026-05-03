@@ -12,6 +12,16 @@ defmodule BotArmyRpg.NATS.Consumer do
   @version Mix.Project.config()[:version]
 
   @subjects [
+    %{
+      subject: "rpg.identity.bind",
+      type: :request_reply,
+      description: "Bind caller context to a user identity"
+    },
+    %{
+      subject: "rpg.identity.resolve",
+      type: :request_reply,
+      description: "Resolve caller context to bound identity"
+    },
     %{subject: "rpg.character.create", type: :request_reply, description: "Create a character"},
     %{subject: "rpg.character.get", type: :request_reply, description: "Get a character by ID"},
     %{subject: "rpg.character.update", type: :request_reply, description: "Update a character"},
@@ -152,6 +162,8 @@ defmodule BotArmyRpg.NATS.Consumer do
 
     result =
       case msg.topic do
+        "rpg.identity.bind" -> BotArmyRpg.Handlers.IdentityHandler.handle_bind(body)
+        "rpg.identity.resolve" -> BotArmyRpg.Handlers.IdentityHandler.handle_resolve(body)
         "rpg.character.create" -> BotArmyRpg.Handlers.CharacterHandler.handle_create(body)
         "rpg.character.get" -> BotArmyRpg.Handlers.CharacterHandler.handle_get(body)
         "rpg.character.update" -> BotArmyRpg.Handlers.CharacterHandler.handle_update(body)

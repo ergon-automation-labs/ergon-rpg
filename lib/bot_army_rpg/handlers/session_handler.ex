@@ -12,7 +12,7 @@ defmodule BotArmyRpg.Handlers.SessionHandler do
       params["tenant_id"] || message["tenant_id"] ||
         BotArmyRuntime.Tenant.default_tenant_id()
 
-    user_id = Map.get(params, "user_id") || Map.get(message, "user_id")
+    user_id = BotArmyRpg.Identity.resolve_user_id(message, tenant_id)
 
     payload =
       Map.merge(params, %{

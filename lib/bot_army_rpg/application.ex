@@ -9,6 +9,7 @@ defmodule BotArmyRpg.Application do
     children =
       []
       |> maybe_add_repo()
+      |> maybe_add_identity_binding_store()
       |> maybe_add_character_store()
       |> maybe_add_session_store()
       |> maybe_add_scene_fact_store()
@@ -26,6 +27,10 @@ defmodule BotArmyRpg.Application do
 
   defp maybe_add_character_store(children) do
     if @env == :test, do: children, else: [{BotArmyRpg.CharacterStore, []} | children]
+  end
+
+  defp maybe_add_identity_binding_store(children) do
+    if @env == :test, do: children, else: [{BotArmyRpg.IdentityBindingStore, []} | children]
   end
 
   defp maybe_add_session_store(children) do

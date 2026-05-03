@@ -12,7 +12,7 @@ defmodule BotArmyRpg.Handlers.CharacterHandler do
       params["tenant_id"] || message["tenant_id"] ||
         BotArmyRuntime.Tenant.default_tenant_id()
 
-    user_id = Map.get(params, "user_id") || Map.get(message, "user_id")
+    user_id = BotArmyRpg.Identity.resolve_user_id(message, tenant_id)
 
     payload =
       Map.merge(params, %{
@@ -77,6 +77,39 @@ defmodule BotArmyRpg.Handlers.CharacterHandler do
       params["tenant_id"] || message["tenant_id"] ||
         BotArmyRuntime.Tenant.default_tenant_id()
 
-    character_store().list(tenant_id)
+    user_id_filter = BotArmyRpg.Identity.resolve_user_id(message, tenant_id)
+
+    with {:ok, characters} <- character_store().list(tenant_id) do
+      normalized_user_id = normalize_user_id(user_id_filter)
+
+      filtered =
+        case normalized_user_id do
+          nil ->
+            characters
+
+          user_id ->
+            Enum.filter(characters, fn character ->
+              Map.get(character, "user_id") == user_id
+            end)
+        end
+
+      {:ok, filtered}
+    end
   end
+
+  defp normalize_user_id(nil), do: nil
+
+  defp normalize_user_id(user_id) when is_binary(user_id) do
+    case Ecto.UUID.cast(user_id) do
+      {:ok, uuid} ->
+        uuid
+
+      :error ->
+        hash = :crypto.hash(:sha256, user_id)
+        <<uuid_int::128>> = binary_part(hash, 0, 16)
+        <<uuid_int::128>> |> Ecto.UUID.cast() |> elem(1)
+    end
+  end
+
+  defp normalize_user_id(user_id), do: user_id
 end

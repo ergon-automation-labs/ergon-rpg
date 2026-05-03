@@ -77,5 +77,86 @@ defmodule BotArmyRpg.Handlers.CharacterHandlerTest do
 
       assert {:ok, ^characters} = BotArmyRpg.Handlers.CharacterHandler.handle_list(message)
     end
+
+    test "filters characters by user_id when provided as UUID" do
+      user_id = Ecto.UUID.generate()
+      other_user_id = Ecto.UUID.generate()
+
+      characters = [
+        %{"id" => Ecto.UUID.generate(), "name" => "Aria", "user_id" => user_id},
+        %{"id" => Ecto.UUID.generate(), "name" => "Borin", "user_id" => other_user_id}
+      ]
+
+      BotArmyRpg.CharacterStoreMock
+      |> expect(:list, fn _tenant_id -> {:ok, characters} end)
+
+      message = %{"payload" => %{"user_id" => user_id}}
+
+      assert {:ok, [filtered]} = BotArmyRpg.Handlers.CharacterHandler.handle_list(message)
+      assert filtered["user_id"] == user_id
+      assert filtered["name"] == "Aria"
+    end
+
+    test "filters characters by user_id when provided as stable string" do
+      source_user = "abby"
+      hash = :crypto.hash(:sha256, source_user)
+      <<uuid_int::128>> = binary_part(hash, 0, 16)
+      normalized_user_id = <<uuid_int::128>> |> Ecto.UUID.cast() |> elem(1)
+
+      characters = [
+        %{"id" => Ecto.UUID.generate(), "name" => "Aria", "user_id" => normalized_user_id},
+        %{"id" => Ecto.UUID.generate(), "name" => "Borin", "user_id" => Ecto.UUID.generate()}
+      ]
+
+      BotArmyRpg.CharacterStoreMock
+      |> expect(:list, fn _tenant_id -> {:ok, characters} end)
+
+      message = %{"payload" => %{"user_id" => source_user}}
+
+      assert {:ok, [filtered]} = BotArmyRpg.Handlers.CharacterHandler.handle_list(message)
+      assert filtered["user_id"] == normalized_user_id
+      assert filtered["name"] == "Aria"
+    end
+  end
+
+  describe "identity binding fallback" do
+    test "uses bound identity for create when user_id is not provided" do
+      start_supervised!({BotArmyRpg.IdentityBindingStore, []})
+
+      bind_message = %{
+        "payload" => %{
+          "surface" => "agent",
+          "client_id" => "cursor-abby",
+          "user_id" => "abby"
+        }
+      }
+
+      assert {:ok, %{"bound" => true, "user_id" => bound_user_id}} =
+               BotArmyRpg.Handlers.IdentityHandler.handle_bind(bind_message)
+
+      character = %{
+        "id" => Ecto.UUID.generate(),
+        "name" => "Aria",
+        "tenant_id" => BotArmyRuntime.Tenant.default_tenant_id(),
+        "user_id" => bound_user_id
+      }
+
+      BotArmyRpg.CharacterStoreMock
+      |> expect(:create, fn payload ->
+        assert payload["user_id"] == bound_user_id
+        {:ok, character}
+      end)
+
+      message = %{
+        "payload" => %{
+          "name" => "Aria",
+          "surface" => "agent",
+          "client_id" => "cursor-abby"
+        }
+      }
+
+      assert {:ok, %{"user_id" => ^bound_user_id}} =
+               BotArmyRpg.Handlers.CharacterHandler.handle_create(message)
+    end
   end
 end
