@@ -36,6 +36,16 @@ defmodule BotArmyRpg.NATS.Consumer do
       description: "Roll dice using standard notation"
     },
     %{subject: "rpg.session.start", type: :request_reply, description: "Start a new RPG session"},
+    %{
+      subject: "rpg.session.join",
+      type: :request_reply,
+      description: "Join a session as a character (owner must match resolved user)"
+    },
+    %{
+      subject: "rpg.session.leave",
+      type: :request_reply,
+      description: "Leave a session for a character (must match prior join)"
+    },
     %{subject: "rpg.session.pause", type: :request_reply, description: "Pause an active session"},
     %{subject: "rpg.session.end", type: :request_reply, description: "End a session"},
     %{
@@ -180,6 +190,8 @@ defmodule BotArmyRpg.NATS.Consumer do
         "rpg.character.list" -> BotArmyRpg.Handlers.CharacterHandler.handle_list(body)
         "rpg.roll.dice" -> BotArmyRpg.Handlers.RollHandler.handle_roll(body)
         "rpg.session.start" -> BotArmyRpg.Handlers.SessionHandler.handle_start(body)
+        "rpg.session.join" -> BotArmyRpg.Handlers.SessionHandler.handle_join(body)
+        "rpg.session.leave" -> BotArmyRpg.Handlers.SessionHandler.handle_leave(body)
         "rpg.session.pause" -> BotArmyRpg.Handlers.SessionHandler.handle_pause(body)
         "rpg.session.end" -> BotArmyRpg.Handlers.SessionHandler.handle_end(body)
         "rpg.session.describe" -> BotArmyRpg.Handlers.SessionHandler.handle_describe(body)

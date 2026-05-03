@@ -5,6 +5,10 @@ defmodule BotArmyRpg.Handlers.SessionHandler do
     Application.get_env(:bot_army_rpg, :session_store, BotArmyRpg.SessionStore)
   end
 
+  defp character_store do
+    Application.get_env(:bot_army_rpg, :character_store, BotArmyRpg.CharacterStore)
+  end
+
   def handle_start(message) do
     params = message["payload"] || message
 
@@ -99,5 +103,170 @@ defmodule BotArmyRpg.Handlers.SessionHandler do
     session_id = params["session_id"]
 
     session_store().get(tenant_id, session_id)
+  end
+
+  @doc """
+  Attach a **character** to an **active** session. Caller must resolve to `user_id`;
+  that user must own the character (`character.user_id`). Updates `character_ids`
+  on the session: `character_id` (string key) → `user_id` string.
+  """
+  def handle_join(message) do
+    params = message["payload"] || message
+
+    tenant_id =
+      params["tenant_id"] || message["tenant_id"] ||
+        BotArmyRuntime.Tenant.default_tenant_id()
+
+    user_id = BotArmyRpg.Identity.resolve_user_id(message, tenant_id)
+    session_id = params["session_id"] |> blank_to_nil()
+    character_id = params["character_id"] |> blank_to_nil()
+
+    cond do
+      is_nil(user_id) ->
+        {:error, :user_id_required}
+
+      is_nil(session_id) ->
+        {:error, :session_id_required}
+
+      is_nil(character_id) ->
+        {:error, :character_id_required}
+
+      true ->
+        do_join(tenant_id, user_id, session_id, character_id)
+    end
+  end
+
+  @doc """
+  Remove a character from a session. Caller must be the same `user_id` stored
+  for that `character_id` in `session.character_ids`.
+  """
+  def handle_leave(message) do
+    params = message["payload"] || message
+
+    tenant_id =
+      params["tenant_id"] || message["tenant_id"] ||
+        BotArmyRuntime.Tenant.default_tenant_id()
+
+    user_id = BotArmyRpg.Identity.resolve_user_id(message, tenant_id)
+    session_id = params["session_id"] |> blank_to_nil()
+    character_id = params["character_id"] |> blank_to_nil()
+
+    cond do
+      is_nil(user_id) ->
+        {:error, :user_id_required}
+
+      is_nil(session_id) ->
+        {:error, :session_id_required}
+
+      is_nil(character_id) ->
+        {:error, :character_id_required}
+
+      true ->
+        do_leave(tenant_id, user_id, session_id, character_id)
+    end
+  end
+
+  defp blank_to_nil(v) when is_binary(v) do
+    t = String.trim(v)
+    if t == "", do: nil, else: t
+  end
+
+  defp blank_to_nil(_), do: nil
+
+  defp do_join(tenant_id, user_id, session_id, character_id) do
+    with {:ok, character} <- character_store().get(tenant_id, character_id),
+         :ok <- require_character_owner(character, user_id),
+         {:ok, session} <- session_store().get(tenant_id, session_id),
+         :ok <- require_session_active(session) do
+      current = session["character_ids"] || %{}
+      key = character_id
+
+      new_ids =
+        current
+        |> stringify_keys()
+        |> Map.put(key, user_id)
+
+      case session_store().update(tenant_id, session_id, %{"character_ids" => new_ids}) do
+        {:ok, updated} ->
+          BotArmyRpg.NATS.Publisher.publish(
+            "rpg.session.joined",
+            %{
+              "session_id" => session_id,
+              "character_id" => character_id,
+              "user_id" => user_id
+            },
+            tenant_id: tenant_id,
+            user_id: user_id
+          )
+
+          {:ok, updated}
+
+        {:error, _} = err ->
+          err
+      end
+    end
+  end
+
+  defp do_leave(tenant_id, user_id, session_id, character_id) do
+    with {:ok, session} <- session_store().get(tenant_id, session_id),
+         :ok <- require_participant(session, character_id, user_id) do
+      current =
+        (session["character_ids"] || %{})
+        |> stringify_keys()
+
+      key = character_id
+      new_ids = Map.delete(current, key)
+
+      case session_store().update(tenant_id, session_id, %{"character_ids" => new_ids}) do
+        {:ok, updated} ->
+          BotArmyRpg.NATS.Publisher.publish(
+            "rpg.session.left",
+            %{
+              "session_id" => session_id,
+              "character_id" => character_id,
+              "user_id" => user_id
+            },
+            tenant_id: tenant_id,
+            user_id: user_id
+          )
+
+          {:ok, updated}
+
+        {:error, _} = err ->
+          err
+      end
+    end
+  end
+
+  defp require_character_owner(character, user_id) do
+    if character_owner?(character, user_id), do: :ok, else: {:error, :forbidden}
+  end
+
+  defp require_session_active(%{"status" => "active"}), do: :ok
+  defp require_session_active(_), do: {:error, :session_not_active}
+
+  defp require_participant(session, character_id, user_id) do
+    current =
+      (session["character_ids"] || %{})
+      |> stringify_keys()
+
+    key = character_id
+
+    case Map.get(current, key) do
+      ^user_id -> :ok
+      nil -> {:error, :not_joined}
+      _ -> {:error, :forbidden}
+    end
+  end
+
+  defp character_owner?(%{"user_id" => owner}, user_id)
+       when is_binary(owner) and is_binary(user_id) do
+    owner == user_id
+  end
+
+  defp character_owner?(_, _), do: false
+
+  defp stringify_keys(map) when is_map(map) do
+    Map.new(map, fn {k, v} -> {to_string(k), v} end)
   end
 end

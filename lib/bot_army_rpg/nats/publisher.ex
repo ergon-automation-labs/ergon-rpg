@@ -30,6 +30,8 @@ defmodule BotArmyRpg.NATS.Publisher do
       "rpg.session.started" -> "events.rpg.session.started"
       "rpg.session.paused" -> "events.rpg.session.paused"
       "rpg.session.ended" -> "events.rpg.session.ended"
+      "rpg.session.joined" -> "events.rpg.session.joined"
+      "rpg.session.left" -> "events.rpg.session.left"
       "rpg.scene.fact.added" -> "events.rpg.scene.fact.added"
       "rpg.theme.changed" -> "events.rpg.theme.changed"
       "rpg.error" -> "events.rpg.error"
