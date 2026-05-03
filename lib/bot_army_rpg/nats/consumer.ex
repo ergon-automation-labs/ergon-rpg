@@ -49,6 +49,16 @@ defmodule BotArmyRpg.NATS.Consumer do
       subject: "rpg.scene.fact.list",
       type: :request_reply,
       description: "List scene facts for session"
+    },
+    %{
+      subject: "rpg.theme.get",
+      type: :request_reply,
+      description: "Get the current active theme"
+    },
+    %{
+      subject: "rpg.theme.change",
+      type: :request_reply,
+      description: "Request a theme change"
     }
   ]
 
@@ -176,6 +186,8 @@ defmodule BotArmyRpg.NATS.Consumer do
         "rpg.session.state" -> BotArmyRpg.Handlers.SessionHandler.handle_state(body)
         "rpg.scene.fact.add" -> BotArmyRpg.Handlers.SceneFactHandler.handle_add(body)
         "rpg.scene.fact.list" -> BotArmyRpg.Handlers.SceneFactHandler.handle_list(body)
+        "rpg.theme.get" -> BotArmyRpg.Handlers.ThemeHandler.handle_get(body)
+        "rpg.theme.change" -> BotArmyRpg.Handlers.ThemeHandler.handle_change(body)
         _ -> {:error, :unknown_subject}
       end
 

@@ -3,6 +3,7 @@ import Config
 config :bot_army_rpg, :character_store, BotArmyRpg.CharacterStoreMock
 config :bot_army_rpg, :session_store, BotArmyRpg.SessionStoreMock
 config :bot_army_rpg, :scene_fact_store, BotArmyRpg.SceneFactStoreMock
+config :bot_army_rpg, :theme_store, BotArmyRpg.ThemeStoreMock
 
 config :bot_army_rpg, BotArmyRpg.Repo,
   database: System.get_env("BOT_ARMY_RPG_DB_NAME", "bot_army_rpg_test"),

@@ -13,6 +13,7 @@ defmodule BotArmyRpg.Application do
       |> maybe_add_character_store()
       |> maybe_add_session_store()
       |> maybe_add_scene_fact_store()
+      |> maybe_add_theme_store()
       |> maybe_add_consumer()
       |> maybe_add_pulse_publisher()
       |> maybe_add_health_responder()
@@ -39,6 +40,10 @@ defmodule BotArmyRpg.Application do
 
   defp maybe_add_scene_fact_store(children) do
     if @env == :test, do: children, else: [{BotArmyRpg.SceneFactStore, []} | children]
+  end
+
+  defp maybe_add_theme_store(children) do
+    if @env == :test, do: children, else: [{BotArmyRpg.ThemeStore, []} | children]
   end
 
   defp maybe_add_consumer(children) do
