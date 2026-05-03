@@ -8,6 +8,7 @@ defmodule BotArmyRpg.PulsePublisher do
   use GenServer
   require Logger
 
+  @health_interval_ms 30 * 1000
   @publish_interval_ms 30 * 60 * 1000
   @service_name "rpg"
 
@@ -19,7 +20,20 @@ defmodule BotArmyRpg.PulsePublisher do
   def init(_opts) do
     Logger.info("[PulsePublisher] Starting RPG bot pulse publisher")
     send(self(), :publish_pulse)
+    Process.send_after(self(), :publish_health, 2_000)
     {:ok, %{}}
+  end
+
+  @impl true
+  def handle_info(:publish_health, state) do
+    BotArmyRuntime.SynapseHealth.publish(
+      source: "bot_army_rpg",
+      service: @service_name,
+      health_signal: health_signal()
+    )
+
+    Process.send_after(self(), :publish_health, @health_interval_ms)
+    {:noreply, state}
   end
 
   @impl true
