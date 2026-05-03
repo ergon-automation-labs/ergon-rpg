@@ -3,7 +3,7 @@ defmodule BotArmyRpg.Handlers.IdentityHandlerTest do
   @moduletag :handlers
 
   test "binds caller context to a normalized user id" do
-    start_supervised!({BotArmyRpg.IdentityBindingStore, []})
+    ensure_identity_store_started()
 
     message = %{
       "payload" => %{
@@ -21,7 +21,7 @@ defmodule BotArmyRpg.Handlers.IdentityHandlerTest do
   end
 
   test "reports skipped identity sync without identity bot fields" do
-    start_supervised!({BotArmyRpg.IdentityBindingStore, []})
+    ensure_identity_store_started()
 
     message = %{
       "payload" => %{
@@ -36,7 +36,7 @@ defmodule BotArmyRpg.Handlers.IdentityHandlerTest do
   end
 
   test "returns error when user_id is missing" do
-    start_supervised!({BotArmyRpg.IdentityBindingStore, []})
+    ensure_identity_store_started()
 
     message = %{
       "payload" => %{
@@ -49,7 +49,7 @@ defmodule BotArmyRpg.Handlers.IdentityHandlerTest do
   end
 
   test "resolves bound identity and reports last sync status" do
-    start_supervised!({BotArmyRpg.IdentityBindingStore, []})
+    ensure_identity_store_started()
 
     bind_message = %{
       "payload" => %{
@@ -77,7 +77,7 @@ defmodule BotArmyRpg.Handlers.IdentityHandlerTest do
   end
 
   test "resolve returns unbound when context has no mapping" do
-    start_supervised!({BotArmyRpg.IdentityBindingStore, []})
+    ensure_identity_store_started()
 
     resolve_message = %{
       "payload" => %{
@@ -88,5 +88,12 @@ defmodule BotArmyRpg.Handlers.IdentityHandlerTest do
 
     assert {:ok, %{"bound" => false, "user_id" => nil, "identity_sync" => nil}} =
              BotArmyRpg.Handlers.IdentityHandler.handle_resolve(resolve_message)
+  end
+
+  defp ensure_identity_store_started do
+    case Process.whereis(BotArmyRpg.IdentityBindingStore) do
+      nil -> start_supervised!({BotArmyRpg.IdentityBindingStore, []})
+      _pid -> :ok
+    end
   end
 end

@@ -121,7 +121,7 @@ defmodule BotArmyRpg.Handlers.CharacterHandlerTest do
 
   describe "identity binding fallback" do
     test "uses bound identity for create when user_id is not provided" do
-      start_supervised!({BotArmyRpg.IdentityBindingStore, []})
+      ensure_identity_store_started()
 
       bind_message = %{
         "payload" => %{
@@ -157,6 +157,13 @@ defmodule BotArmyRpg.Handlers.CharacterHandlerTest do
 
       assert {:ok, %{"user_id" => ^bound_user_id}} =
                BotArmyRpg.Handlers.CharacterHandler.handle_create(message)
+    end
+  end
+
+  defp ensure_identity_store_started do
+    case Process.whereis(BotArmyRpg.IdentityBindingStore) do
+      nil -> start_supervised!({BotArmyRpg.IdentityBindingStore, []})
+      _pid -> :ok
     end
   end
 end
