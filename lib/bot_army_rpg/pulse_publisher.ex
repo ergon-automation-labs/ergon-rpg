@@ -1,0 +1,54 @@
+defmodule BotArmyRpg.PulsePublisher do
+  @moduledoc """
+  Periodic health pulse publisher for the RPG bot.
+
+  Publishes domain-specific health metrics every 30 minutes to bot.rpg.pulse.
+  """
+
+  use GenServer
+  require Logger
+
+  @publish_interval_ms 30 * 60 * 1000
+  @service_name "rpg"
+
+  def start_link(_opts) do
+    GenServer.start_link(__MODULE__, %{}, name: __MODULE__)
+  end
+
+  @impl true
+  def init(_opts) do
+    Logger.info("[PulsePublisher] Starting RPG bot pulse publisher")
+    send(self(), :publish_pulse)
+    {:ok, %{}}
+  end
+
+  @impl true
+  def handle_info(:publish_pulse, state) do
+    Task.start(fn -> publish_pulse() end)
+    Process.send_after(self(), :publish_pulse, @publish_interval_ms)
+    {:noreply, state}
+  end
+
+  defp publish_pulse do
+    signal = health_signal()
+
+    pulse = %{
+      service: @service_name,
+      timestamp: DateTime.utc_now() |> DateTime.to_iso8601(),
+      health: signal,
+      metrics: %{}
+    }
+
+    case BotArmyRuntime.NATS.Publisher.publish("bot.#{@service_name}.pulse", pulse) do
+      {:ok, _} ->
+        Logger.debug("[PulsePublisher] Published pulse: #{signal}")
+
+      {:error, reason} ->
+        Logger.warning("[PulsePublisher] Failed to publish pulse: #{inspect(reason)}")
+    end
+  end
+
+  defp health_signal do
+    :nominal
+  end
+end

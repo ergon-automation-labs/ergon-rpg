@@ -10,7 +10,8 @@ defmodule BotArmyRpg.MixProject do
       deps: deps(),
       releases: [
         rpg_bot: [
-          applications: [bot_army_rpg: :permanent]
+          applications: [bot_army_rpg: :permanent],
+          validate_compile_env: false
         ]
       ]
     ]
@@ -32,7 +33,6 @@ defmodule BotArmyRpg.MixProject do
       {:jason, "~> 1.4"},
       {:logger_json, "~> 5.1"},
       {:elixir_uuid, "~> 1.2"},
-      {:req, "~> 0.3"},
 
       # Development/Test
       {:ex_doc, "~> 0.30", only: :dev, runtime: false},
