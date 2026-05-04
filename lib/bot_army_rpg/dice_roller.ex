@@ -65,10 +65,10 @@ defmodule BotArmyRpg.DiceRoller do
 
       errors = Enum.filter(dice_groups, &match?({:error, _}, &1))
 
-      if length(dice_matches) == 0 do
+      if dice_matches == [] do
         {:error, :no_dice_found}
       else
-        if length(errors) > 0 do
+        if errors != [] do
           {:error, :invalid_notation}
         else
           modifier = parse_modifier(normalized)

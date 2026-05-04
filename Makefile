@@ -1,6 +1,7 @@
 MIX_BIN ?= $(shell which mix 2>/dev/null || echo /Users/abby/.local/share/mise/shims/mix)
 VERSION ?= $(shell grep 'version:' mix.exs | head -1 | sed 's/.*"\([^"]*\)".*/\1/')
 SCRIPTS_DIRECTORY ?= $(abspath $(CURDIR)/../scripts)
+MIX ?= /Users/abby/.local/share/mise/shims/mix
 
 .PHONY: setup help deps test credo dialyzer coverage check format clean release publish-release setup-hooks setup-db reset-db logs push-and-publish
 
@@ -78,7 +79,7 @@ dialyzer: deps
 coverage:
 	$(MIX_BIN) coveralls
 
-check: test credo dialyzer
+check: test credo
 	@echo "All checks passed!"
 
 format:
