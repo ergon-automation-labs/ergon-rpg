@@ -9,7 +9,7 @@ defmodule BotArmyRpg.Handlers.RollHandlerTest do
   defmodule SuccessfulPublisher do
     def request("bridge.random.roll", payload, _opts) do
       notation = payload["notation"]
-      seed = Map.get(payload, "seed")
+      _seed = Map.get(payload, "seed")
 
       {:ok,
        %{

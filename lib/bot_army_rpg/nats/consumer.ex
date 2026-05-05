@@ -69,6 +69,16 @@ defmodule BotArmyRpg.NATS.Consumer do
       subject: "rpg.theme.change",
       type: :request_reply,
       description: "Request a theme change"
+    },
+    %{
+      subject: "rpg.lore.snapshot",
+      type: :request_reply,
+      description: "Lore Keeper world_snapshot (Resistance Chronicle rollup)"
+    },
+    %{
+      subject: "rpg.lore.ingest",
+      type: :request_reply,
+      description: "Ingest lore signals (explicit facets or ops_deploy / system_health shorthand)"
     }
   ]
 
@@ -178,7 +188,7 @@ defmodule BotArmyRpg.NATS.Consumer do
   end
 
   defp handle_request_reply(msg, state) do
-    body = msg.body
+    body = decode_request_body(msg.body)
 
     result =
       case msg.topic do
@@ -200,6 +210,8 @@ defmodule BotArmyRpg.NATS.Consumer do
         "rpg.scene.fact.list" -> BotArmyRpg.Handlers.SceneFactHandler.handle_list(body)
         "rpg.theme.get" -> BotArmyRpg.Handlers.ThemeHandler.handle_get(body)
         "rpg.theme.change" -> BotArmyRpg.Handlers.ThemeHandler.handle_change(body)
+        "rpg.lore.snapshot" -> BotArmyRpg.Handlers.LoreHandler.handle_snapshot(body)
+        "rpg.lore.ingest" -> BotArmyRpg.Handlers.LoreHandler.handle_ingest(body)
         _ -> {:error, :unknown_subject}
       end
 
@@ -213,6 +225,16 @@ defmodule BotArmyRpg.NATS.Consumer do
       Gnat.pub(state.conn, msg.reply_to, reply)
     end
   end
+
+  defp decode_request_body(bin) when is_binary(bin) do
+    case Jason.decode(bin) do
+      {:ok, %{} = m} -> m
+      _ -> %{}
+    end
+  end
+
+  defp decode_request_body(%{} = m), do: m
+  defp decode_request_body(_), do: %{}
 
   defp route_message(_message, topic) do
     Logger.debug("[RPG Consumer] Routing pub/sub message from #{topic}")

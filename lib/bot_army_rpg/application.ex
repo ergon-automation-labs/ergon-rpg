@@ -7,7 +7,7 @@ defmodule BotArmyRpg.Application do
   @impl true
   def start(_type, _args) do
     children =
-      []
+      [{BotArmyRpg.LoreKeeper, []}]
       |> maybe_add_repo()
       |> maybe_add_identity_binding_store()
       |> maybe_add_character_store()
