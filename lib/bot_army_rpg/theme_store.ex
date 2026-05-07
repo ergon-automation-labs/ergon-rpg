@@ -63,11 +63,14 @@ defmodule BotArmyRpg.ThemeStore do
     result =
       Ecto.Multi.new()
       |> Ecto.Multi.run(:clear_previous, fn repo, _ ->
-        from(t in Theme,
-          where: t.tenant_id == ^tenant_uuid and t.is_current == true,
-          update: [set: [is_current: false]]
-        )
-        |> repo.update_all([])
+        result =
+          from(t in Theme,
+            where: t.tenant_id == ^tenant_uuid and t.is_current == true,
+            update: [set: [is_current: false]]
+          )
+          |> repo.update_all([])
+
+        {:ok, result}
       end)
       |> Ecto.Multi.run(:insert_new, fn repo, _ ->
         repo.insert(changeset)
