@@ -133,47 +133,27 @@ push-and-publish:
 	@git push && $(MAKE) publish-release
 
 # --- RPG game control targets ---
+NATS_SERVER := nats://localhost:4222
+
 rpg-theme-cyberpunk:
-	@echo "Setting cyberpunk theme..."
-	@nats request --server nats://localhost:4222 rpg.theme.change '{
-	  "setting": "cyberpunk",
-	  "tone": "gritty",
-	  "mechanic": "hacking",
-	  "rules": {
-	    "dice_notation": "1d20",
-	    "action_types": ["attack", "hack", "evade", "buff", "inspect", "inspire"],
-	    "initiative_method": "roll"
-	  },
-	  "tenant_id": "00000000-0000-0000-0000-000000000001"
-	}' --timeout 5s
+	@nats request --server $(NATS_SERVER) rpg.theme.change '{"setting":"cyberpunk","tone":"gritty","mechanic":"hacking","rules":{"dice_notation":"1d20","action_types":["attack","hack","evade","buff","inspect","inspire"],"initiative_method":"roll"},"tenant_id":"00000000-0000-0000-0000-000000000001"}' --timeout 5s
 
 rpg-session-start:
-	@echo "Starting RPG session with bot players..."
-	@nats request --server nats://localhost:4222 rpg.session.start '{
-	  "bot_ids": ["gtd_bot", "synapse", "llm_bot"],
-	  "scene_description": "Neon-drenched alleyway. Three figures circle each other under a flickering hologram ad.",
-	  "tenant_id": "00000000-0000-0000-0000-000000000001"
-	}' --timeout 5s
+	@nats request --server $(NATS_SERVER) rpg.session.start '{"bot_ids":["gtd_bot","synapse","llm_bot"],"scene_description":"Neon-drenched alleyway. Three figures circle each other under a flickering hologram ad.","tenant_id":"00000000-0000-0000-0000-000000000001"}' --timeout 5s
 
 rpg-start-round:
 	@if [ -z "$(SESSION_ID)" ]; then \
 	  echo "Error: SESSION_ID not set. Usage: make rpg-start-round SESSION_ID=e291bf79-..."; \
 	  exit 1; \
 	fi
-	@nats request --server nats://localhost:4222 rpg.turn.start_round '{
-	  "session_id": "$(SESSION_ID)",
-	  "tenant_id": "00000000-0000-0000-0000-000000000001"
-	}' --timeout 5s
+	@nats request --server $(NATS_SERVER) rpg.turn.start_round '{"session_id":"$(SESSION_ID)","tenant_id":"00000000-0000-0000-0000-000000000001"}' --timeout 5s
 
 rpg-next-turn:
 	@if [ -z "$(SESSION_ID)" ]; then \
 	  echo "Error: SESSION_ID not set. Usage: make rpg-next-turn SESSION_ID=e291bf79-..."; \
 	  exit 1; \
 	fi
-	@nats request --server nats://localhost:4222 rpg.turn.next '{
-	  "session_id": "$(SESSION_ID)",
-	  "tenant_id": "00000000-0000-0000-0000-000000000001"
-	}' --timeout 5s
+	@nats request --server $(NATS_SERVER) rpg.turn.next '{"session_id":"$(SESSION_ID)","tenant_id":"00000000-0000-0000-0000-000000000001"}' --timeout 5s
 
 rpg-spectate-help:
 	@echo "RPG Spectate — Hearth TUI controls"
