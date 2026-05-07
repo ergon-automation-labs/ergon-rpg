@@ -7,6 +7,16 @@ defmodule BotArmyRpg.Handlers.ThemeHandlerTest do
 
   setup :verify_on_exit!
 
+  setup do
+    Application.put_env(:bot_army_rpg, :theme_store, BotArmyRpg.ThemeStoreMock)
+
+    on_exit(fn ->
+      Application.delete_env(:bot_army_rpg, :theme_store)
+    end)
+
+    :ok
+  end
+
   describe "handle_get/1" do
     test "returns current theme for tenant" do
       theme = %{

@@ -5,6 +5,16 @@ defmodule BotArmyRpg.Handlers.CharacterHandlerTest do
 
   setup :verify_on_exit!
 
+  setup do
+    Application.put_env(:bot_army_rpg, :character_store, BotArmyRpg.CharacterStoreMock)
+
+    on_exit(fn ->
+      Application.delete_env(:bot_army_rpg, :character_store)
+    end)
+
+    :ok
+  end
+
   describe "handle_create/1" do
     test "creates a character and publishes event" do
       character = %{

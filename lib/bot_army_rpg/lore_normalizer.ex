@@ -14,7 +14,7 @@ defmodule BotArmyRpg.LoreNormalizer do
   def normalize_ingest(payload) when is_map(payload) do
     cond do
       Map.has_key?(payload, "facets") ->
-        normalize_explicit(payload["facets"])
+        normalize_explicit(payload["facets"], Map.get(payload, "drops", []))
 
       Map.has_key?(payload, "ops_deploy") ->
         {:ok, from_ops_deploy(payload["ops_deploy"])}
@@ -29,7 +29,9 @@ defmodule BotArmyRpg.LoreNormalizer do
 
   def normalize_ingest(_), do: {:error, :unknown_ingest_shape}
 
-  defp normalize_explicit(facets) when is_list(facets) do
+  defp normalize_explicit(facets, drops)
+
+  defp normalize_explicit(facets, drops) when is_list(facets) do
     Enum.reduce_while(facets, {:ok, []}, fn facet, {:ok, acc} ->
       case normalize_explicit_facet(facet) do
         {:ok, u} -> {:cont, {:ok, [u | acc]}}
@@ -37,12 +39,20 @@ defmodule BotArmyRpg.LoreNormalizer do
       end
     end)
     |> case do
-      {:ok, upserts} -> {:ok, %{upserts: Enum.reverse(upserts), drops: []}}
-      other -> other
+      {:ok, upserts} ->
+        normalized_drops =
+          drops
+          |> Enum.filter(&(is_binary(&1) and &1 != ""))
+          |> Enum.uniq()
+
+        {:ok, %{upserts: Enum.reverse(upserts), drops: normalized_drops}}
+
+      other ->
+        other
     end
   end
 
-  defp normalize_explicit(_), do: {:error, :invalid_facets}
+  defp normalize_explicit(_, _), do: {:error, :invalid_facets}
 
   defp normalize_explicit_facet(facet) when is_map(facet) do
     id = facet["id"]

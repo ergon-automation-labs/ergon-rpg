@@ -97,6 +97,38 @@ defmodule BotArmyRpg.Handlers.CharacterHandler do
     end
   end
 
+  def handle_get_by_bot(message) do
+    params = message["payload"] || message
+
+    tenant_id =
+      params["tenant_id"] || message["tenant_id"] ||
+        BotArmyRuntime.Tenant.default_tenant_id()
+
+    bot_id = Map.get(params, "bot_id", "")
+
+    if bot_id == "" do
+      {:error, :bot_id_required}
+    else
+      character_store().get_by_bot_id(tenant_id, bot_id)
+    end
+  end
+
+  def handle_ensure(message) do
+    params = message["payload"] || message
+
+    tenant_id =
+      params["tenant_id"] || message["tenant_id"] ||
+        BotArmyRuntime.Tenant.default_tenant_id()
+
+    bot_id = Map.get(params, "bot_id", "")
+
+    if bot_id == "" do
+      {:error, :bot_id_required}
+    else
+      BotArmyRpg.CharacterProvisioning.ensure_bot_character(bot_id, tenant_id)
+    end
+  end
+
   defp normalize_user_id(nil), do: nil
 
   defp normalize_user_id(user_id) when is_binary(user_id) do

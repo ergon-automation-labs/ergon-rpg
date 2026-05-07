@@ -31,7 +31,15 @@ defmodule BotArmyRpg.Handlers.ThemeHandler do
     end
 
     theme_data =
-      Map.take(params, ["setting", "tone", "mechanic", "vocabulary", "templates", "npc_personas"])
+      Map.take(params, [
+        "setting",
+        "tone",
+        "mechanic",
+        "vocabulary",
+        "templates",
+        "npc_personas",
+        "rules"
+      ])
 
     case theme_store().set_current(tenant_id, theme_data, changed_by) do
       {:ok, theme} ->
@@ -42,5 +50,12 @@ defmodule BotArmyRpg.Handlers.ThemeHandler do
         Logger.error("[ThemeHandler] Theme change failed: #{inspect(reason)}")
         {:error, reason}
     end
+  end
+
+  def handle_list(message) do
+    params = message["payload"] || message
+    tenant_id = params["tenant_id"] || message["tenant_id"] || default_tenant_id()
+
+    theme_store().list(tenant_id)
   end
 end

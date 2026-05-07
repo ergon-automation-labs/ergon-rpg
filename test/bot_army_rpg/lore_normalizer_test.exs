@@ -69,6 +69,16 @@ defmodule BotArmyRpg.LoreNormalizerTest do
     assert "health.unhealthy.synapse-a" in drops
   end
 
+  test "explicit facets with drops normalize correctly" do
+    assert {:ok, %{upserts: [_], drops: ["intent.fix_email"]}} =
+             LoreNormalizer.normalize_ingest(%{
+               "facets" => [
+                 %{"id" => "poll.vote", "severity" => "info", "summary" => "open"}
+               ],
+               "drops" => ["intent.fix_email", ""]
+             })
+  end
+
   test "unknown ingest shape errors" do
     assert LoreNormalizer.normalize_ingest(%{"foo" => 1}) == {:error, :unknown_ingest_shape}
   end

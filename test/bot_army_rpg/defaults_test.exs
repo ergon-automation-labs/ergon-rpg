@@ -32,4 +32,28 @@ defmodule BotArmyRpg.DefaultsTest do
     assert Map.has_key?(inventory, "items")
     assert inventory["gold"] == 0
   end
+
+  test "bot_archetype returns known bot archetypes" do
+    assert BotArmyRpg.Defaults.bot_archetype("gtd_bot") == %{race: "Human", class: "Scheduler"}
+    assert BotArmyRpg.Defaults.bot_archetype("synapse") == %{race: "Elf", class: "Oracle"}
+    assert BotArmyRpg.Defaults.bot_archetype("llm_bot") == %{race: "Tiefling", class: "Bard"}
+
+    assert BotArmyRpg.Defaults.bot_archetype("sre_terminal") == %{
+             race: "Dwarf",
+             class: "Sentinel"
+           }
+  end
+
+  test "bot_archetype normalizes bot_army_ prefix" do
+    assert BotArmyRpg.Defaults.bot_archetype("bot_army_gtd") == %{
+             race: "Human",
+             class: "Scheduler"
+           }
+
+    assert BotArmyRpg.Defaults.bot_archetype(:bot_army_synapse) == %{race: "Elf", class: "Oracle"}
+  end
+
+  test "bot_archetype falls back to Adventurer for unknown bots" do
+    assert BotArmyRpg.Defaults.bot_archetype("unknown") == %{race: "Unknown", class: "Adventurer"}
+  end
 end

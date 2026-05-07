@@ -11,6 +11,9 @@ defmodule BotArmyRpg.CharacterStore do
   def create(payload) when is_map(payload), do: GenServer.call(@server, {:create, payload})
   def get(tenant_id, character_id), do: GenServer.call(@server, {:get, tenant_id, character_id})
 
+  def get_by_bot_id(tenant_id, bot_id),
+    do: GenServer.call(@server, {:get_by_bot_id, tenant_id, bot_id})
+
   def update(tenant_id, character_id, payload),
     do: GenServer.call(@server, {:update, tenant_id, character_id, payload})
 
@@ -42,6 +45,7 @@ defmodule BotArmyRpg.CharacterStore do
     character_id = Ecto.UUID.generate()
     tenant_id = payload["tenant_id"] || BotArmyRuntime.Tenant.default_tenant_id()
     user_id = Map.get(payload, "user_id")
+    bot_id = Map.get(payload, "bot_id")
 
     stats = Map.get(payload, "stats") || BotArmyRpg.Defaults.default_pathfinder_stats()
     inventory = Map.get(payload, "inventory") || BotArmyRpg.Defaults.default_inventory()
@@ -52,6 +56,7 @@ defmodule BotArmyRpg.CharacterStore do
         %{
           "tenant_id" => convert_to_uuid(tenant_id),
           "user_id" => if(user_id, do: convert_to_uuid(user_id), else: nil),
+          "bot_id" => bot_id,
           "name" => payload["name"],
           "race" => Map.get(payload, "race"),
           "class" => Map.get(payload, "class"),
@@ -66,7 +71,11 @@ defmodule BotArmyRpg.CharacterStore do
       {:ok, db_char} ->
         character = schema_to_map(db_char)
         new_state = Map.put(state, character_id, character)
-        Logger.info("[CharacterStore] Created character: #{character_id}")
+
+        Logger.info(
+          "[CharacterStore] Created character: #{character_id} name=#{character["name"]}"
+        )
+
         {:reply, {:ok, character}, new_state}
 
       {:error, changeset} ->
@@ -87,6 +96,21 @@ defmodule BotArmyRpg.CharacterStore do
         else
           {:reply, {:error, :not_found}, state}
         end
+    end
+  end
+
+  @impl true
+  def handle_call({:get_by_bot_id, tenant_id, bot_id}, _from, state) do
+    result =
+      state
+      |> Map.values()
+      |> Enum.find(fn char ->
+        char["tenant_id"] == tenant_id and char["bot_id"] == bot_id
+      end)
+
+    case result do
+      nil -> {:reply, {:error, :not_found}, state}
+      character -> {:reply, {:ok, character}, state}
     end
   end
 
@@ -114,7 +138,8 @@ defmodule BotArmyRpg.CharacterStore do
                        "level" => Map.get(payload, "level", db_char.level),
                        "stats" => Map.get(payload, "stats", db_char.stats),
                        "inventory" => Map.get(payload, "inventory", db_char.inventory),
-                       "notes" => Map.get(payload, "notes", db_char.notes)
+                       "notes" => Map.get(payload, "notes", db_char.notes),
+                       "bot_id" => Map.get(payload, "bot_id", db_char.bot_id)
                      })
 
                    case BotArmyRpg.Repo.update(changeset) do
@@ -177,6 +202,7 @@ defmodule BotArmyRpg.CharacterStore do
       "id" => Ecto.UUID.cast!(char.id) |> to_string(),
       "tenant_id" => char.tenant_id |> to_string(),
       "user_id" => if(char.user_id, do: char.user_id |> to_string(), else: nil),
+      "bot_id" => char.bot_id,
       "name" => char.name,
       "race" => char.race,
       "class" => char.class,

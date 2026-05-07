@@ -14,6 +14,7 @@ defmodule BotArmyRpg.Schemas.Character do
     field(:notes, :string)
     field(:tenant_id, Ecto.UUID)
     field(:user_id, Ecto.UUID)
+    field(:bot_id, :string)
 
     timestamps()
   end
@@ -29,7 +30,8 @@ defmodule BotArmyRpg.Schemas.Character do
       :inventory,
       :notes,
       :tenant_id,
-      :user_id
+      :user_id,
+      :bot_id
     ])
     |> validate_required([:name, :tenant_id])
   end

@@ -27,6 +27,8 @@ defmodule BotArmyRpg.Handlers.SessionHandler do
 
     case session_store().create(payload) do
       {:ok, session} ->
+        session = maybe_join_bots(session, params, tenant_id)
+
         BotArmyRpg.NATS.Publisher.publish("rpg.session.started", session,
           tenant_id: tenant_id,
           user_id: user_id
@@ -49,14 +51,75 @@ defmodule BotArmyRpg.Handlers.SessionHandler do
 
     session_id = params["session_id"]
 
-    case session_store().update(tenant_id, session_id, %{"status" => "paused"}) do
-      {:ok, session} ->
-        BotArmyRpg.NATS.Publisher.publish("rpg.session.paused", session, tenant_id: tenant_id)
-        {:ok, session}
+    with {:ok, session} <- session_store().get(tenant_id, session_id) do
+      metadata = session["metadata"] || %{}
 
-      {:error, reason} ->
-        Logger.error("[SessionHandler] Pause failed: #{inspect(reason)}")
-        {:error, reason}
+      turn_state = %{
+        "character_ids" => session["character_ids"],
+        "scene_description" => session["scene_description"],
+        "paused_at" => DateTime.utc_now() |> DateTime.to_iso8601()
+      }
+
+      new_metadata = Map.put(metadata, "turn_state", turn_state)
+
+      case session_store().update(tenant_id, session_id, %{
+             "status" => "paused",
+             "metadata" => new_metadata
+           }) do
+        {:ok, session} ->
+          BotArmyRpg.NATS.Publisher.publish("rpg.session.paused", session, tenant_id: tenant_id)
+          {:ok, session}
+
+        {:error, reason} ->
+          Logger.error("[SessionHandler] Pause failed: #{inspect(reason)}")
+          {:error, reason}
+      end
+    end
+  end
+
+  def handle_resume(message) do
+    params = message["payload"] || message
+
+    tenant_id =
+      params["tenant_id"] || message["tenant_id"] ||
+        BotArmyRuntime.Tenant.default_tenant_id()
+
+    session_id = params["session_id"]
+
+    with {:ok, session} <- session_store().get(tenant_id, session_id) do
+      if session["status"] != "paused" do
+        {:error, :session_not_paused}
+      else
+        metadata = session["metadata"] || %{}
+        turn_state = Map.get(metadata, "turn_state", %{})
+
+        restored_metadata = Map.drop(metadata, ["turn_state"])
+
+        updates = %{
+          "status" => "active",
+          "metadata" => restored_metadata
+        }
+
+        updates =
+          if turn_state["scene_description"] do
+            Map.put(updates, "scene_description", turn_state["scene_description"])
+          else
+            updates
+          end
+
+        case session_store().update(tenant_id, session_id, updates) do
+          {:ok, session} ->
+            BotArmyRpg.NATS.Publisher.publish("rpg.session.resumed", session,
+              tenant_id: tenant_id
+            )
+
+            {:ok, session}
+
+          {:error, reason} ->
+            Logger.error("[SessionHandler] Resume failed: #{inspect(reason)}")
+            {:error, reason}
+        end
+      end
     end
   end
 
@@ -121,7 +184,12 @@ defmodule BotArmyRpg.Handlers.SessionHandler do
     session_id = params["session_id"] |> blank_to_nil()
     character_id = params["character_id"] |> blank_to_nil()
 
+    bot_id = params["bot_id"] |> blank_to_nil()
+
     cond do
+      not is_nil(bot_id) ->
+        do_bot_join(tenant_id, session_id, bot_id)
+
       is_nil(user_id) ->
         {:error, :user_id_required}
 
@@ -259,12 +327,75 @@ defmodule BotArmyRpg.Handlers.SessionHandler do
     end
   end
 
+  defp character_owner?(%{"user_id" => owner, "bot_id" => _bot_id}, user_id)
+       when is_binary(owner) and is_binary(user_id) do
+    owner == user_id
+  end
+
+  defp character_owner?(%{"bot_id" => bot_id}, _user_id)
+       when is_binary(bot_id) and bot_id != "" do
+    # Bot-owned characters are valid for any authenticated user
+    true
+  end
+
   defp character_owner?(%{"user_id" => owner}, user_id)
        when is_binary(owner) and is_binary(user_id) do
     owner == user_id
   end
 
   defp character_owner?(_, _), do: false
+
+  defp maybe_join_bots(session, params, tenant_id) do
+    bot_ids = params["bot_ids"] || []
+
+    Enum.reduce(bot_ids, session, fn bot_id, acc ->
+      case BotArmyRpg.CharacterProvisioning.ensure_bot_character(bot_id, tenant_id) do
+        {:ok, character} ->
+          current = acc["character_ids"] || %{}
+          new_ids = Map.put(current, character["id"], bot_id)
+
+          case session_store().update(tenant_id, acc["id"], %{"character_ids" => new_ids}) do
+            {:ok, updated} -> updated
+            {:error, _} -> acc
+          end
+
+        {:error, reason} ->
+          Logger.warning(
+            "[SessionHandler] Could not join bot #{bot_id} to session #{acc["id"]}: #{inspect(reason)}"
+          )
+
+          acc
+      end
+    end)
+  end
+
+  defp do_bot_join(tenant_id, session_id, bot_id) do
+    with {:ok, character} <-
+           BotArmyRpg.CharacterProvisioning.ensure_bot_character(bot_id, tenant_id),
+         {:ok, session} <- session_store().get(tenant_id, session_id),
+         :ok <- require_session_active(session) do
+      current = session["character_ids"] || %{}
+      new_ids = Map.put(current, character["id"], bot_id)
+
+      case session_store().update(tenant_id, session_id, %{"character_ids" => new_ids}) do
+        {:ok, updated} ->
+          BotArmyRpg.NATS.Publisher.publish(
+            "rpg.session.joined",
+            %{
+              "session_id" => session_id,
+              "character_id" => character["id"],
+              "bot_id" => bot_id
+            },
+            tenant_id: tenant_id
+          )
+
+          {:ok, updated}
+
+        {:error, _} = err ->
+          err
+      end
+    end
+  end
 
   defp stringify_keys(map) when is_map(map) do
     Map.new(map, fn {k, v} -> {to_string(k), v} end)

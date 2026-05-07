@@ -11,10 +11,12 @@ defmodule BotArmyRpg.Handlers.SessionHandlerTest do
   setup do
     Application.put_env(:bot_army_rpg, :session_store, BotArmyRpg.SessionStoreMock)
     Application.put_env(:bot_army_rpg, :character_store, BotArmyRpg.CharacterStoreMock)
+    Application.put_env(:bot_army_rpg, :theme_store, BotArmyRpg.ThemeStoreMock)
 
     on_exit(fn ->
       Application.delete_env(:bot_army_rpg, :session_store)
       Application.delete_env(:bot_army_rpg, :character_store)
+      Application.delete_env(:bot_army_rpg, :theme_store)
     end)
 
     :ok

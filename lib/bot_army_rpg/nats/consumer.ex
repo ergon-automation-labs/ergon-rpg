@@ -24,6 +24,11 @@ defmodule BotArmyRpg.NATS.Consumer do
     },
     %{subject: "rpg.character.create", type: :request_reply, description: "Create a character"},
     %{subject: "rpg.character.get", type: :request_reply, description: "Get a character by ID"},
+    %{
+      subject: "rpg.character.get_by_bot",
+      type: :request_reply,
+      description: "Get a character by bot_id"
+    },
     %{subject: "rpg.character.update", type: :request_reply, description: "Update a character"},
     %{
       subject: "rpg.character.list",
@@ -31,11 +36,21 @@ defmodule BotArmyRpg.NATS.Consumer do
       description: "List characters for tenant"
     },
     %{
+      subject: "rpg.character.ensure",
+      type: :request_reply,
+      description: "Ensure bot character exists"
+    },
+    %{
       subject: "rpg.roll.dice",
       type: :request_reply,
       description: "Roll dice using standard notation"
     },
     %{subject: "rpg.session.start", type: :request_reply, description: "Start a new RPG session"},
+    %{
+      subject: "rpg.session.resume",
+      type: :request_reply,
+      description: "Resume a paused RPG session"
+    },
     %{
       subject: "rpg.session.join",
       type: :request_reply,
@@ -71,6 +86,11 @@ defmodule BotArmyRpg.NATS.Consumer do
       description: "Request a theme change"
     },
     %{
+      subject: "rpg.theme.list",
+      type: :request_reply,
+      description: "List available themes"
+    },
+    %{
       subject: "rpg.lore.snapshot",
       type: :request_reply,
       description: "Lore Keeper world_snapshot (Resistance Chronicle rollup)"
@@ -79,6 +99,36 @@ defmodule BotArmyRpg.NATS.Consumer do
       subject: "rpg.lore.ingest",
       type: :request_reply,
       description: "Ingest lore signals (explicit facets or ops_deploy / system_health shorthand)"
+    },
+    %{
+      subject: "rpg.turn.start_round",
+      type: :request_reply,
+      description: "Initialize turn order from session characters"
+    },
+    %{
+      subject: "rpg.turn.next",
+      type: :request_reply,
+      description: "Advance to next actor in turn order"
+    },
+    %{
+      subject: "rpg.turn.whose",
+      type: :request_reply,
+      description: "Get current actor without mutating state"
+    },
+    %{
+      subject: "rpg.action.declare",
+      type: :request_reply,
+      description: "Character declares an action intent"
+    },
+    %{
+      subject: "rpg.action.resolve",
+      type: :request_reply,
+      description: "GM adjudicates a declared action"
+    },
+    %{
+      subject: "rpg.scene.narrate",
+      type: :request_reply,
+      description: "Generate GM narration for a scene"
     }
   ]
 
@@ -196,10 +246,13 @@ defmodule BotArmyRpg.NATS.Consumer do
         "rpg.identity.resolve" -> BotArmyRpg.Handlers.IdentityHandler.handle_resolve(body)
         "rpg.character.create" -> BotArmyRpg.Handlers.CharacterHandler.handle_create(body)
         "rpg.character.get" -> BotArmyRpg.Handlers.CharacterHandler.handle_get(body)
+        "rpg.character.get_by_bot" -> BotArmyRpg.Handlers.CharacterHandler.handle_get_by_bot(body)
         "rpg.character.update" -> BotArmyRpg.Handlers.CharacterHandler.handle_update(body)
         "rpg.character.list" -> BotArmyRpg.Handlers.CharacterHandler.handle_list(body)
+        "rpg.character.ensure" -> BotArmyRpg.Handlers.CharacterHandler.handle_ensure(body)
         "rpg.roll.dice" -> BotArmyRpg.Handlers.RollHandler.handle_roll(body)
         "rpg.session.start" -> BotArmyRpg.Handlers.SessionHandler.handle_start(body)
+        "rpg.session.resume" -> BotArmyRpg.Handlers.SessionHandler.handle_resume(body)
         "rpg.session.join" -> BotArmyRpg.Handlers.SessionHandler.handle_join(body)
         "rpg.session.leave" -> BotArmyRpg.Handlers.SessionHandler.handle_leave(body)
         "rpg.session.pause" -> BotArmyRpg.Handlers.SessionHandler.handle_pause(body)
@@ -210,8 +263,15 @@ defmodule BotArmyRpg.NATS.Consumer do
         "rpg.scene.fact.list" -> BotArmyRpg.Handlers.SceneFactHandler.handle_list(body)
         "rpg.theme.get" -> BotArmyRpg.Handlers.ThemeHandler.handle_get(body)
         "rpg.theme.change" -> BotArmyRpg.Handlers.ThemeHandler.handle_change(body)
+        "rpg.theme.list" -> BotArmyRpg.Handlers.ThemeHandler.handle_list(body)
         "rpg.lore.snapshot" -> BotArmyRpg.Handlers.LoreHandler.handle_snapshot(body)
         "rpg.lore.ingest" -> BotArmyRpg.Handlers.LoreHandler.handle_ingest(body)
+        "rpg.turn.start_round" -> BotArmyRpg.Handlers.GMHandler.handle_turn_start_round(body)
+        "rpg.turn.next" -> BotArmyRpg.Handlers.GMHandler.handle_turn_next(body)
+        "rpg.turn.whose" -> BotArmyRpg.Handlers.GMHandler.handle_turn_whose(body)
+        "rpg.action.declare" -> BotArmyRpg.Handlers.GMHandler.handle_action_declare(body)
+        "rpg.action.resolve" -> BotArmyRpg.Handlers.GMHandler.handle_action_resolve(body)
+        "rpg.scene.narrate" -> BotArmyRpg.Handlers.GMHandler.handle_scene_narrate(body)
         _ -> {:error, :unknown_subject}
       end
 

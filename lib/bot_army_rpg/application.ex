@@ -15,6 +15,7 @@ defmodule BotArmyRpg.Application do
       |> maybe_add_scene_fact_store()
       |> maybe_add_theme_store()
       |> maybe_add_consumer()
+      |> maybe_add_lore_subscriber()
       |> maybe_add_pulse_publisher()
       |> maybe_add_health_responder()
 
@@ -48,6 +49,10 @@ defmodule BotArmyRpg.Application do
 
   defp maybe_add_consumer(children) do
     if @env == :test, do: children, else: [{BotArmyRpg.NATS.Consumer, []} | children]
+  end
+
+  defp maybe_add_lore_subscriber(children) do
+    if @env == :test, do: children, else: [{BotArmyRpg.LoreSubscriber, []} | children]
   end
 
   defp maybe_add_pulse_publisher(children) do

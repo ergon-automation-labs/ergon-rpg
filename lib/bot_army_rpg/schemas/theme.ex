@@ -15,6 +15,8 @@ defmodule BotArmyRpg.Schemas.Theme do
     field(:changed_by, :string)
     field(:tenant_id, Ecto.UUID)
 
+    field(:rules, :map, default: %{})
+
     timestamps()
   end
 
@@ -29,7 +31,8 @@ defmodule BotArmyRpg.Schemas.Theme do
       :npc_personas,
       :is_current,
       :changed_by,
-      :tenant_id
+      :tenant_id,
+      :rules
     ])
     |> validate_required([:setting, :tone, :mechanic, :tenant_id])
   end

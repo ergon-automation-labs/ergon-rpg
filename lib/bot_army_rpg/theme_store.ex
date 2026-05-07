@@ -54,6 +54,7 @@ defmodule BotArmyRpg.ThemeStore do
         vocabulary: Map.get(theme_data, "vocabulary", %{}),
         templates: Map.get(theme_data, "templates", %{}),
         npc_personas: Map.get(theme_data, "npc_personas", %{}),
+        rules: Map.get(theme_data, "rules", %{}),
         is_current: true,
         changed_by: changed_by,
         tenant_id: tenant_uuid
@@ -162,6 +163,7 @@ defmodule BotArmyRpg.ThemeStore do
       "vocabulary" => theme.vocabulary,
       "templates" => theme.templates,
       "npc_personas" => theme.npc_personas,
+      "rules" => theme.rules,
       "is_current" => theme.is_current,
       "changed_by" => theme.changed_by,
       "changed_at" => theme.updated_at |> NaiveDateTime.to_iso8601(),
