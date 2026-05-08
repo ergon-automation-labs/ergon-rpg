@@ -69,6 +69,7 @@ defmodule BotArmyRpg.NATS.Consumer do
       description: "Set scene description"
     },
     %{subject: "rpg.session.state", type: :request_reply, description: "Get session state"},
+    %{subject: "rpg.session.list", type: :request_reply, description: "List sessions for tenant"},
     %{subject: "rpg.scene.fact.add", type: :request_reply, description: "Append a scene fact"},
     %{
       subject: "rpg.scene.fact.list",
@@ -259,6 +260,7 @@ defmodule BotArmyRpg.NATS.Consumer do
         "rpg.session.end" -> BotArmyRpg.Handlers.SessionHandler.handle_end(body)
         "rpg.session.describe" -> BotArmyRpg.Handlers.SessionHandler.handle_describe(body)
         "rpg.session.state" -> BotArmyRpg.Handlers.SessionHandler.handle_state(body)
+        "rpg.session.list" -> BotArmyRpg.Handlers.SessionHandler.handle_list(body)
         "rpg.scene.fact.add" -> BotArmyRpg.Handlers.SceneFactHandler.handle_add(body)
         "rpg.scene.fact.list" -> BotArmyRpg.Handlers.SceneFactHandler.handle_list(body)
         "rpg.theme.get" -> BotArmyRpg.Handlers.ThemeHandler.handle_get(body)

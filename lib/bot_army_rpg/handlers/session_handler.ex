@@ -168,6 +168,17 @@ defmodule BotArmyRpg.Handlers.SessionHandler do
     session_store().get(tenant_id, session_id)
   end
 
+  def handle_list(message) do
+    params = message["payload"] || message
+
+    tenant_id =
+      params["tenant_id"] || message["tenant_id"] ||
+        BotArmyRuntime.Tenant.default_tenant_id()
+
+    sessions = session_store().list(tenant_id)
+    {:ok, %{"sessions" => sessions, "count" => length(sessions)}}
+  end
+
   @doc """
   Attach a **character** to an **active** session. Caller must resolve to `user_id`;
   that user must own the character (`character.user_id`). Updates `character_ids`
