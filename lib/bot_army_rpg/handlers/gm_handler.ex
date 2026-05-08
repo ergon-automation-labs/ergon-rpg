@@ -58,7 +58,7 @@ defmodule BotArmyRpg.Handlers.GMHandler do
           actor = TurnManager.current_actor(updated)
           publish_turn_started(updated, actor, tenant_id)
 
-          bot_result = maybe_bot_autoplay(actor, updated, tenant_id, session_id)
+          bot_result = maybe_enqueue_bot_autoplay(actor, updated, tenant_id, session_id)
 
           {:ok,
            %{
@@ -324,6 +324,27 @@ defmodule BotArmyRpg.Handlers.GMHandler do
   end
 
   defp maybe_bot_autoplay(_, _, _, _), do: nil
+
+  defp maybe_enqueue_bot_autoplay(
+         %{"type" => "bot", "character_id" => character_id, "bot_id" => bot_id} = actor,
+         session,
+         tenant_id,
+         session_id
+       ) do
+    # Do not block rpg.turn.next request/reply on autoplay + narration.
+    Task.start(fn ->
+      _ = maybe_bot_autoplay(actor, session, tenant_id, session_id)
+    end)
+
+    %{
+      "queued" => true,
+      "resolved" => false,
+      "character_id" => character_id,
+      "bot_id" => bot_id
+    }
+  end
+
+  defp maybe_enqueue_bot_autoplay(_, _, _, _), do: nil
 
   defp get_actor_name(character_id, tenant_id) do
     case character_store().get(tenant_id, character_id) do
