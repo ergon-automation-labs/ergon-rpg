@@ -15,6 +15,7 @@ defmodule BotArmyRpg.ProgressionSubscriber do
   @reconnect_delay_ms 5_000
 
   @subjects [
+    "events.gtd.task.created",
     "events.gtd.task.completed",
     "events.fitness.workout.completed",
     "events.learning.lesson.completed"
@@ -75,13 +76,26 @@ defmodule BotArmyRpg.ProgressionSubscriber do
   def handle_info({:msg, msg}, state) do
     Logger.debug("[ProgressionSubscriber] Received on #{msg.topic}")
 
-    with {:ok, decoded} <- BotArmyCore.NATS.Decoder.decode(msg.body),
-         tenant_id <- Map.get(decoded, "tenant_id") || BotArmyRuntime.Tenant.default_tenant_id(),
-         {:ok, xp_amount, loot_source} <- event_to_xp(msg.topic, decoded) do
-      handle_progression(tenant_id, decoded, xp_amount, loot_source)
-    else
+    case BotArmyCore.NATS.Decoder.decode(msg.body) do
+      {:ok, decoded} ->
+        tenant_id = Map.get(decoded, "tenant_id") || BotArmyRuntime.Tenant.default_tenant_id()
+
+        case msg.topic do
+          "events.gtd.task.created" ->
+            handle_quest_creation(tenant_id, decoded)
+
+          _ ->
+            case event_to_xp(msg.topic, decoded) do
+              {:ok, xp_amount, loot_source} ->
+                handle_progression(tenant_id, decoded, xp_amount, loot_source)
+
+              {:error, reason} ->
+                Logger.debug("[ProgressionSubscriber] Skipped #{msg.topic}: #{inspect(reason)}")
+            end
+        end
+
       {:error, reason} ->
-        Logger.debug("[ProgressionSubscriber] Skipped #{msg.topic}: #{inspect(reason)}")
+        Logger.debug("[ProgressionSubscriber] Decode failed #{msg.topic}: #{inspect(reason)}")
     end
 
     {:noreply, state}
@@ -236,6 +250,51 @@ defmodule BotArmyRpg.ProgressionSubscriber do
         tenant_id: tenant_id,
         user_id: user_id
       )
+    end
+  end
+
+  # Auto-create RPG quest from GTD task
+  defp handle_quest_creation(tenant_id, event) do
+    user_id = Map.get(event, "user_id")
+    task_title = Map.get(event, "task_title", "")
+    task_id = Map.get(event, "task_id")
+    priority = Map.get(event, "priority", "normal")
+
+    if user_id && task_title != "" do
+      case CharacterStore.get_by_user_id(tenant_id, user_id) do
+        {:ok, character} ->
+          character_id = character["id"]
+
+          gtd_task = %{
+            "title" => task_title,
+            "priority" => priority,
+            "task_id" => task_id
+          }
+
+          quest = BotArmyRpg.QuestEngine.create_from_gtd_task(gtd_task)
+
+          quest_store = Application.get_env(:bot_army_rpg, :quest_store, BotArmyRpg.QuestStore)
+
+          case quest_store.create(character_id, quest) do
+            {:ok, created_quest} ->
+              BotArmyRpg.NATS.Publisher.publish("rpg.quest.created", created_quest,
+                tenant_id: tenant_id,
+                user_id: user_id
+              )
+
+              Logger.info(
+                "[ProgressionSubscriber] Quest auto-created: \"#{quest["title"]}\" for #{user_id}"
+              )
+
+            {:error, reason} ->
+              Logger.warning("[ProgressionSubscriber] Quest creation failed: #{inspect(reason)}")
+          end
+
+        {:error, _} ->
+          Logger.debug("[ProgressionSubscriber] No character for #{user_id}, skipping quest")
+      end
+    else
+      Logger.debug("[ProgressionSubscriber] Task event missing user_id or title, skipping quest")
     end
   end
 end
