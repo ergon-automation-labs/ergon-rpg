@@ -49,13 +49,15 @@ defmodule BotArmyRpg.Handlers.CharacterHandlerTest do
   end
 
   describe "handle_get/1" do
-    test "retrieves a character" do
+    test "retrieves a character with modifiers enriched" do
       character_id = Ecto.UUID.generate()
 
       character = %{
         "id" => character_id,
         "name" => "Aria",
-        "tenant_id" => BotArmyRuntime.Tenant.default_tenant_id()
+        "tenant_id" => BotArmyRuntime.Tenant.default_tenant_id(),
+        "stats" => %{"ability_scores" => %{}},
+        "inventory" => %{}
       }
 
       BotArmyRpg.CharacterStoreMock
@@ -63,7 +65,9 @@ defmodule BotArmyRpg.Handlers.CharacterHandlerTest do
 
       message = %{"payload" => %{"character_id" => character_id}}
 
-      assert {:ok, ^character} = BotArmyRpg.Handlers.CharacterHandler.handle_get(message)
+      assert {:ok, result} = BotArmyRpg.Handlers.CharacterHandler.handle_get(message)
+      assert result["id"] == character_id
+      assert result["modifier_summary"] != nil
     end
 
     test "returns not_found for missing character" do

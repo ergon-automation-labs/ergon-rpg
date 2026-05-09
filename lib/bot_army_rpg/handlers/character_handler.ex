@@ -44,7 +44,14 @@ defmodule BotArmyRpg.Handlers.CharacterHandler do
 
     character_id = params["character_id"]
 
-    character_store().get(tenant_id, character_id)
+    case character_store().get(tenant_id, character_id) do
+      {:ok, character} ->
+        enriched = enrich_character_with_modifiers(character)
+        {:ok, enriched}
+
+      error ->
+        error
+    end
   end
 
   def handle_update(message) do
@@ -178,7 +185,14 @@ defmodule BotArmyRpg.Handlers.CharacterHandler do
         inventory
         |> Map.put("equipped", %{slot => item_id})
 
-      character_store().update(tenant_id, character_id, %{"inventory" => updated_inventory})
+      case character_store().update(tenant_id, character_id, %{"inventory" => updated_inventory}) do
+        {:ok, updated_char} ->
+          enriched = enrich_character_with_modifiers(updated_char)
+          {:ok, enriched}
+
+        error ->
+          error
+      end
     else
       {:error, reason} ->
         Logger.error("[CharacterHandler] Equip failed: #{inspect(reason)}")
@@ -203,7 +217,14 @@ defmodule BotArmyRpg.Handlers.CharacterHandler do
         inventory
         |> Map.update("equipped", %{}, &Map.delete(&1, slot))
 
-      character_store().update(tenant_id, character_id, %{"inventory" => updated_inventory})
+      case character_store().update(tenant_id, character_id, %{"inventory" => updated_inventory}) do
+        {:ok, updated_char} ->
+          enriched = enrich_character_with_modifiers(updated_char)
+          {:ok, enriched}
+
+        error ->
+          error
+      end
     else
       {:error, reason} ->
         Logger.error("[CharacterHandler] Unequip failed: #{inspect(reason)}")
@@ -216,5 +237,17 @@ defmodule BotArmyRpg.Handlers.CharacterHandler do
       nil -> {:error, :item_not_found}
       item -> {:ok, item}
     end
+  end
+
+  defp enrich_character_with_modifiers(character) do
+    mod_summary = BotArmyRpg.ModifierEngine.get_modifier_summary(character)
+    total_scores = BotArmyRpg.ModifierEngine.get_total_scores(character)
+
+    stats = Map.get(character, "stats", %{})
+    updated_stats = Map.put(stats, "ability_scores", total_scores)
+
+    character
+    |> Map.put("modifier_summary", mod_summary)
+    |> Map.put("stats", updated_stats)
   end
 end
