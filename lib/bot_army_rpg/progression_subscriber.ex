@@ -17,7 +17,7 @@ defmodule BotArmyRpg.ProgressionSubscriber do
   @subjects [
     "events.gtd.task.created",
     "events.gtd.task.completed",
-    "events.fitness.workout.completed",
+    "events.fitness.workout.logged",
     "events.learning.lesson.completed"
   ]
 
@@ -126,7 +126,7 @@ defmodule BotArmyRpg.ProgressionSubscriber do
     {:ok, xp, "gtd_task"}
   end
 
-  defp event_to_xp("events.fitness.workout.completed", event) do
+  defp event_to_xp("events.fitness.workout.logged", event) do
     intensity = Map.get(event, "intensity", "moderate")
     xp = intensity_xp(intensity)
     {:ok, xp, "fitness_workout"}
