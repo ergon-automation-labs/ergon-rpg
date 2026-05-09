@@ -179,6 +179,10 @@ defmodule BotArmyRpg.ProgressionSubscriber do
             CharacterStore.add_item(tenant_id, user_id, loot)
           end
 
+          # Auto-complete matching quest if this was a task completion
+          task_id = Map.get(event, "task_id")
+          quest_bonus = maybe_complete_quest(tenant_id, user_id, character, task_id)
+
           # Publish progression notification for Discord/surfaces
           publish_progression_notification(
             tenant_id,
@@ -187,11 +191,12 @@ defmodule BotArmyRpg.ProgressionSubscriber do
             xp_amount,
             leveled_up,
             old_level,
-            loot
+            loot,
+            quest_bonus
           )
 
           Logger.info(
-            "[ProgressionSubscriber] #{xp_amount} XP awarded to #{user_id}, level #{new_level}#{if leveled_up, do: " (LEVEL UP!)", else: ""}"
+            "[ProgressionSubscriber] #{xp_amount} XP awarded to #{user_id}, level #{new_level}#{if leveled_up, do: " (LEVEL UP!)", else: ""}#{if quest_bonus, do: " + quest bonus #{quest_bonus} XP", else: ""}"
           )
 
         {:error, reason} ->
@@ -211,6 +216,46 @@ defmodule BotArmyRpg.ProgressionSubscriber do
     end
   end
 
+  defp maybe_complete_quest(tenant_id, user_id, character, task_id)
+       when is_binary(task_id) do
+    character_id = character["id"]
+    quest_store = Application.get_env(:bot_army_rpg, :quest_store, BotArmyRpg.QuestStore)
+
+    case quest_store.find_by_gtd_id(character_id, task_id) do
+      {:ok, quest} ->
+        completed = BotArmyRpg.QuestEngine.mark_completed(quest, character["level"])
+
+        case quest_store.update(character_id, quest["id"], completed) do
+          {:ok, updated_quest} ->
+            bonus_xp = get_in(updated_quest, ["rewards_earned", "xp"]) || 0
+
+            if bonus_xp > 0 do
+              CharacterStore.award_xp(tenant_id, user_id, bonus_xp)
+            end
+
+            BotArmyRpg.NATS.Publisher.publish("rpg.quest.completed", updated_quest,
+              tenant_id: tenant_id,
+              user_id: user_id
+            )
+
+            Logger.info(
+              "[ProgressionSubscriber] Quest completed: \"#{quest["title"]}\" +#{bonus_xp} bonus XP"
+            )
+
+            bonus_xp
+
+          {:error, reason} ->
+            Logger.warning("[ProgressionSubscriber] Quest update failed: #{inspect(reason)}")
+            nil
+        end
+
+      {:error, _} ->
+        nil
+    end
+  end
+
+  defp maybe_complete_quest(_tenant_id, _user_id, _character, _task_id), do: nil
+
   defp publish_progression_notification(
          tenant_id,
          user_id,
@@ -218,7 +263,8 @@ defmodule BotArmyRpg.ProgressionSubscriber do
          xp_amount,
          leveled_up,
          old_level,
-         loot
+         loot,
+         quest_bonus \\ nil
        ) do
     stats = Map.get(character, "stats", %{})
 
@@ -230,7 +276,8 @@ defmodule BotArmyRpg.ProgressionSubscriber do
       "level" => character["level"],
       "leveled_up" => leveled_up,
       "old_level" => old_level,
-      "loot" => loot
+      "loot" => loot,
+      "quest_bonus_xp" => quest_bonus
     }
 
     BotArmyRpg.NATS.Publisher.publish("rpg.progression.awarded", notification,
@@ -268,7 +315,7 @@ defmodule BotArmyRpg.ProgressionSubscriber do
           gtd_task = %{
             "title" => task_title,
             "priority" => priority,
-            "task_id" => task_id
+            "id" => task_id
           }
 
           quest = BotArmyRpg.QuestEngine.create_from_gtd_task(gtd_task)

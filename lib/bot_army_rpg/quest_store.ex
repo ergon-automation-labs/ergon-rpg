@@ -35,6 +35,10 @@ defmodule BotArmyRpg.QuestStore do
     GenServer.call(@server, {:update, character_id, quest_id, updates})
   end
 
+  def find_by_gtd_id(character_id, gtd_id) when is_binary(character_id) and is_binary(gtd_id) do
+    GenServer.call(@server, {:find_by_gtd_id, character_id, gtd_id})
+  end
+
   @impl true
   def init(_opts) do
     Logger.info("[QuestStore] Starting")
@@ -84,6 +88,20 @@ defmodule BotArmyRpg.QuestStore do
       |> Enum.map(fn {_, quest} -> quest end)
 
     {:reply, {:ok, quests}, state}
+  end
+
+  @impl true
+  def handle_call({:find_by_gtd_id, character_id, gtd_id}, _from, state) do
+    quest =
+      state
+      |> Enum.find(fn {{cid, _qid}, quest} ->
+        cid == character_id and Map.get(quest, "linked_gtd_id") == gtd_id
+      end)
+
+    case quest do
+      nil -> {:reply, {:error, :not_found}, state}
+      {_key, q} -> {:reply, {:ok, q}, state}
+    end
   end
 
   @impl true
