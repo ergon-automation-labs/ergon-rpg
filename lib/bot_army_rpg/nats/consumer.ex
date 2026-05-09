@@ -155,6 +155,21 @@ defmodule BotArmyRpg.NATS.Consumer do
       subject: "rpg.narrative.daily",
       type: :pub_sub,
       description: "Daily narrative update based on character progression"
+    },
+    %{
+      subject: "rpg.quest.create",
+      type: :request_reply,
+      description: "Create a new quest from GTD task"
+    },
+    %{
+      subject: "rpg.quest.list",
+      type: :request_reply,
+      description: "List active or all quests for character"
+    },
+    %{
+      subject: "rpg.quest.complete",
+      type: :request_reply,
+      description: "Complete a quest and award XP multiplier"
     }
   ]
 
@@ -303,6 +318,9 @@ defmodule BotArmyRpg.NATS.Consumer do
         "rpg.action.declare" -> BotArmyRpg.Handlers.GMHandler.handle_action_declare(body)
         "rpg.action.resolve" -> BotArmyRpg.Handlers.GMHandler.handle_action_resolve(body)
         "rpg.scene.narrate" -> BotArmyRpg.Handlers.GMHandler.handle_scene_narrate(body)
+        "rpg.quest.create" -> BotArmyRpg.Handlers.QuestHandler.handle_create(body)
+        "rpg.quest.list" -> BotArmyRpg.Handlers.QuestHandler.handle_list(body)
+        "rpg.quest.complete" -> BotArmyRpg.Handlers.QuestHandler.handle_complete(body)
         _ -> {:error, :unknown_subject}
       end
 
