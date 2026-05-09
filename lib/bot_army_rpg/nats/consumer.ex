@@ -150,6 +150,11 @@ defmodule BotArmyRpg.NATS.Consumer do
       subject: "rpg.scene.narrate",
       type: :request_reply,
       description: "Generate GM narration for a scene"
+    },
+    %{
+      subject: "rpg.narrative.daily",
+      type: :pub_sub,
+      description: "Daily narrative update based on character progression"
     }
   ]
 

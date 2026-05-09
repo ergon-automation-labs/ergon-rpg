@@ -18,6 +18,7 @@ defmodule BotArmyRpg.Application do
       |> maybe_add_lore_subscriber()
       |> maybe_add_progression_subscriber()
       |> maybe_add_pulse_publisher()
+      |> maybe_add_daily_narrator()
       |> maybe_add_health_responder()
 
     opts = [strategy: :one_for_one, name: BotArmyRpg.Supervisor]
@@ -62,6 +63,10 @@ defmodule BotArmyRpg.Application do
 
   defp maybe_add_pulse_publisher(children) do
     if @env == :test, do: children, else: [{BotArmyRpg.PulsePublisher, []} | children]
+  end
+
+  defp maybe_add_daily_narrator(children) do
+    if @env == :test, do: children, else: [{BotArmyRpg.DailyNarrator, []} | children]
   end
 
   defp maybe_add_health_responder(children) do
