@@ -38,6 +38,10 @@ defmodule BotArmyRpg.NATS.Publisher do
       "rpg.turn.your_turn" -> "events.rpg.turn.your_turn"
       "rpg.action.resolved" -> "events.rpg.action.resolved"
       "rpg.scene.narrated" -> "events.rpg.scene.narrated"
+      "rpg.progression.awarded" -> "events.rpg.progression.awarded"
+      "rpg.character.leveled_up" -> "events.rpg.character.leveled_up"
+      "rpg.quest.created" -> "events.rpg.quest.created"
+      "rpg.quest.completed" -> "events.rpg.quest.completed"
       "rpg.error" -> "events.rpg.error"
       _ -> "events.rpg.#{event_name}"
     end

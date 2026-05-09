@@ -149,8 +149,14 @@ defmodule BotArmyRpg.ProgressionSubscriber do
     user_id = Map.get(event, "user_id")
 
     if user_id do
+      # Snapshot level before awarding XP to detect level-ups
+      old_level = get_character_level(tenant_id, user_id)
+
       case CharacterStore.award_xp(tenant_id, user_id, xp_amount) do
         {:ok, character} ->
+          new_level = character["level"]
+          leveled_up = new_level > old_level
+
           # Generate and award loot
           priority = Map.get(event, "priority") || Map.get(event, "intensity") || "normal"
           loot = LootEngine.generate(loot_source, priority)
@@ -159,8 +165,19 @@ defmodule BotArmyRpg.ProgressionSubscriber do
             CharacterStore.add_item(tenant_id, user_id, loot)
           end
 
+          # Publish progression notification for Discord/surfaces
+          publish_progression_notification(
+            tenant_id,
+            user_id,
+            character,
+            xp_amount,
+            leveled_up,
+            old_level,
+            loot
+          )
+
           Logger.info(
-            "[ProgressionSubscriber] #{xp_amount} XP awarded to #{user_id}, new level: #{character["level"]}"
+            "[ProgressionSubscriber] #{xp_amount} XP awarded to #{user_id}, level #{new_level}#{if leveled_up, do: " (LEVEL UP!)", else: ""}"
           )
 
         {:error, reason} ->
@@ -170,6 +187,55 @@ defmodule BotArmyRpg.ProgressionSubscriber do
       end
     else
       Logger.debug("[ProgressionSubscriber] Event missing user_id, skipping")
+    end
+  end
+
+  defp get_character_level(tenant_id, user_id) do
+    case CharacterStore.get_by_user_id(tenant_id, user_id) do
+      {:ok, char} -> Map.get(char, "level", 1)
+      _ -> 1
+    end
+  end
+
+  defp publish_progression_notification(
+         tenant_id,
+         user_id,
+         character,
+         xp_amount,
+         leveled_up,
+         old_level,
+         loot
+       ) do
+    stats = Map.get(character, "stats", %{})
+
+    notification = %{
+      "character_name" => character["name"],
+      "xp_earned" => xp_amount,
+      "xp_current" => Map.get(stats, "xp", 0),
+      "xp_to_next" => Map.get(stats, "xp_to_next", 500),
+      "level" => character["level"],
+      "leveled_up" => leveled_up,
+      "old_level" => old_level,
+      "loot" => loot
+    }
+
+    BotArmyRpg.NATS.Publisher.publish("rpg.progression.awarded", notification,
+      tenant_id: tenant_id,
+      user_id: user_id
+    )
+
+    if leveled_up do
+      BotArmyRpg.NATS.Publisher.publish(
+        "rpg.character.leveled_up",
+        %{
+          "character_name" => character["name"],
+          "old_level" => old_level,
+          "new_level" => character["level"],
+          "class" => character["class"]
+        },
+        tenant_id: tenant_id,
+        user_id: user_id
+      )
     end
   end
 end
