@@ -20,6 +20,15 @@ defmodule BotArmyRpg.CharacterStore do
   def list(tenant_id), do: GenServer.call(@server, {:list, tenant_id})
   def clear, do: GenServer.call(@server, :clear)
 
+  def get_by_user_id(tenant_id, user_id),
+    do: GenServer.call(@server, {:get_by_user_id, tenant_id, user_id})
+
+  def award_xp(tenant_id, user_id, xp_amount) when is_integer(xp_amount) and xp_amount >= 0,
+    do: GenServer.call(@server, {:award_xp, tenant_id, user_id, xp_amount})
+
+  def add_item(tenant_id, user_id, item) when is_map(item),
+    do: GenServer.call(@server, {:add_item, tenant_id, user_id, item})
+
   @impl true
   def init(_opts) do
     Logger.info("[CharacterStore] Starting")
@@ -177,9 +186,131 @@ defmodule BotArmyRpg.CharacterStore do
   end
 
   @impl true
+  def handle_call({:get_by_user_id, tenant_id, user_id}, _from, state) do
+    user_uuid = convert_to_uuid(user_id)
+
+    result =
+      state
+      |> Map.values()
+      |> Enum.find(fn char ->
+        char["tenant_id"] == tenant_id and char["user_id"] == user_uuid |> to_string()
+      end)
+
+    case result do
+      nil -> {:reply, {:error, :not_found}, state}
+      character -> {:reply, {:ok, character}, state}
+    end
+  end
+
+  @impl true
+  def handle_call({:award_xp, tenant_id, user_id, xp_amount}, _from, state) do
+    case get_by_user_id(tenant_id, user_id) do
+      {:ok, character} ->
+        character_id = character["id"]
+        stats = Map.get(character, "stats", %{})
+        current_xp = Map.get(stats, "xp", 0)
+        current_level = Map.get(character, "level", 1)
+        xp_to_next = Map.get(stats, "xp_to_next", 500)
+
+        new_xp = current_xp + xp_amount
+
+        {new_level, new_xp_total} =
+          if new_xp >= xp_to_next do
+            next_level = current_level + 1
+            xp_reset = new_xp - xp_to_next
+            {next_level, xp_reset}
+          else
+            {current_level, new_xp}
+          end
+
+        new_xp_to_next = new_level * 500
+
+        # Boost primary ability on level up
+        new_stats =
+          if new_level > current_level do
+            boost_primary_ability(stats, character["class"], new_level)
+          else
+            stats
+          end
+
+        # Update with new XP/level
+        updated_stats =
+          new_stats
+          |> Map.put("xp", new_xp_total)
+          |> Map.put("xp_to_next", new_xp_to_next)
+
+        case update(tenant_id, character_id, %{
+               "level" => new_level,
+               "stats" => updated_stats
+             }) do
+          {:ok, updated_char} ->
+            Logger.info(
+              "[CharacterStore] #{user_id} earned #{xp_amount} XP, now level #{new_level}"
+            )
+
+            {:reply, {:ok, updated_char}, state}
+
+          {:error, reason} ->
+            Logger.error("[CharacterStore] Failed to award XP: #{inspect(reason)}")
+            {:reply, {:error, reason}, state}
+        end
+
+      {:error, _} ->
+        {:reply, {:error, :character_not_found}, state}
+    end
+  end
+
+  @impl true
+  def handle_call({:add_item, tenant_id, user_id, item}, _from, state) do
+    case get_by_user_id(tenant_id, user_id) do
+      {:ok, character} ->
+        character_id = character["id"]
+        inventory = Map.get(character, "inventory", %{})
+        items = Map.get(inventory, "items", [])
+        new_items = [item | items]
+        new_inventory = Map.put(inventory, "items", new_items)
+
+        case update(tenant_id, character_id, %{"inventory" => new_inventory}) do
+          {:ok, updated_char} ->
+            Logger.info("[CharacterStore] Added item #{item["name"]} to #{user_id}'s inventory")
+
+            {:reply, {:ok, updated_char}, state}
+
+          {:error, reason} ->
+            Logger.error("[CharacterStore] Failed to add item: #{inspect(reason)}")
+            {:reply, {:error, reason}, state}
+        end
+
+      {:error, _} ->
+        {:reply, {:error, :character_not_found}, state}
+    end
+  end
+
+  @impl true
   def handle_call(:clear, _from, _state) do
     BotArmyRpg.Repo.delete_all(BotArmyRpg.Schemas.Character)
     {:reply, :ok, %{}}
+  end
+
+  defp boost_primary_ability(stats, class, _new_level) do
+    ability_scores = Map.get(stats, "ability_scores", %{})
+
+    boosted =
+      case class do
+        "Wizard" -> Map.update(ability_scores, "int", 10, &(&1 + 1))
+        "Scribe" -> Map.update(ability_scores, "int", 10, &(&1 + 1))
+        "Oracle" -> Map.update(ability_scores, "wis", 10, &(&1 + 1))
+        "Drillmaster" -> Map.update(ability_scores, "str", 10, &(&1 + 1))
+        "Sentinel" -> Map.update(ability_scores, "str", 10, &(&1 + 1))
+        "Steward" -> Map.update(ability_scores, "str", 10, &(&1 + 1))
+        "Fixer" -> Map.update(ability_scores, "cha", 10, &(&1 + 1))
+        "Herald" -> Map.update(ability_scores, "cha", 10, &(&1 + 1))
+        "Shapeshifter" -> Map.update(ability_scores, "dex", 10, &(&1 + 1))
+        "Archivist" -> Map.update(ability_scores, "wis", 10, &(&1 + 1))
+        _ -> Map.update(ability_scores, "str", 10, &(&1 + 1))
+      end
+
+    Map.put(stats, "ability_scores", boosted)
   end
 
   defp convert_to_uuid(value) when is_binary(value) do

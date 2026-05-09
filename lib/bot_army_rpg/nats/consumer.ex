@@ -41,6 +41,26 @@ defmodule BotArmyRpg.NATS.Consumer do
       description: "Ensure bot character exists"
     },
     %{
+      subject: "rpg.character.award_xp",
+      type: :request_reply,
+      description: "Award XP to a character and handle level-up"
+    },
+    %{
+      subject: "rpg.character.equip",
+      type: :request_reply,
+      description: "Equip an item from inventory"
+    },
+    %{
+      subject: "rpg.character.unequip",
+      type: :request_reply,
+      description: "Unequip an item from a slot"
+    },
+    %{
+      subject: "rpg.loot.generate",
+      type: :request_reply,
+      description: "Generate random loot based on source and priority"
+    },
+    %{
       subject: "rpg.roll.dice",
       type: :request_reply,
       description: "Roll dice using standard notation"
@@ -251,6 +271,10 @@ defmodule BotArmyRpg.NATS.Consumer do
         "rpg.character.update" -> BotArmyRpg.Handlers.CharacterHandler.handle_update(body)
         "rpg.character.list" -> BotArmyRpg.Handlers.CharacterHandler.handle_list(body)
         "rpg.character.ensure" -> BotArmyRpg.Handlers.CharacterHandler.handle_ensure(body)
+        "rpg.character.award_xp" -> BotArmyRpg.Handlers.CharacterHandler.handle_award_xp(body)
+        "rpg.character.equip" -> BotArmyRpg.Handlers.CharacterHandler.handle_equip(body)
+        "rpg.character.unequip" -> BotArmyRpg.Handlers.CharacterHandler.handle_unequip(body)
+        "rpg.loot.generate" -> BotArmyRpg.Handlers.LootHandler.handle_generate(body)
         "rpg.roll.dice" -> BotArmyRpg.Handlers.RollHandler.handle_roll(body)
         "rpg.session.start" -> BotArmyRpg.Handlers.SessionHandler.handle_start(body)
         "rpg.session.resume" -> BotArmyRpg.Handlers.SessionHandler.handle_resume(body)

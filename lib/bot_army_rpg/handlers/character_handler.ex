@@ -144,4 +144,77 @@ defmodule BotArmyRpg.Handlers.CharacterHandler do
   end
 
   defp normalize_user_id(user_id), do: user_id
+
+  def handle_award_xp(message) do
+    params = message["payload"] || message
+
+    tenant_id =
+      params["tenant_id"] || message["tenant_id"] ||
+        BotArmyRuntime.Tenant.default_tenant_id()
+
+    user_id = BotArmyRpg.Identity.resolve_user_id(message, tenant_id)
+    xp_amount = params["xp_amount"] || 100
+
+    character_store().award_xp(tenant_id, user_id, xp_amount)
+  end
+
+  def handle_equip(message) do
+    params = message["payload"] || message
+
+    tenant_id =
+      params["tenant_id"] || message["tenant_id"] ||
+        BotArmyRuntime.Tenant.default_tenant_id()
+
+    user_id = BotArmyRpg.Identity.resolve_user_id(message, tenant_id)
+    item_id = params["item_id"]
+    slot = params["slot"] || "main_hand"
+
+    with {:ok, character} <- character_store().get_by_user_id(tenant_id, user_id),
+         character_id <- character["id"],
+         inventory <- Map.get(character, "inventory", %{}),
+         items <- Map.get(inventory, "items", []),
+         {:ok, item} <- find_item_by_id(items, item_id) do
+      updated_inventory =
+        inventory
+        |> Map.put("equipped", %{slot => item_id})
+
+      character_store().update(tenant_id, character_id, %{"inventory" => updated_inventory})
+    else
+      {:error, reason} ->
+        Logger.error("[CharacterHandler] Equip failed: #{inspect(reason)}")
+        {:error, reason}
+    end
+  end
+
+  def handle_unequip(message) do
+    params = message["payload"] || message
+
+    tenant_id =
+      params["tenant_id"] || message["tenant_id"] ||
+        BotArmyRuntime.Tenant.default_tenant_id()
+
+    user_id = BotArmyRpg.Identity.resolve_user_id(message, tenant_id)
+    slot = params["slot"] || "main_hand"
+
+    with {:ok, character} <- character_store().get_by_user_id(tenant_id, user_id),
+         character_id <- character["id"],
+         inventory <- Map.get(character, "inventory", %{}) do
+      updated_inventory =
+        inventory
+        |> Map.update("equipped", %{}, &Map.delete(&1, slot))
+
+      character_store().update(tenant_id, character_id, %{"inventory" => updated_inventory})
+    else
+      {:error, reason} ->
+        Logger.error("[CharacterHandler] Unequip failed: #{inspect(reason)}")
+        {:error, reason}
+    end
+  end
+
+  defp find_item_by_id(items, item_id) when is_list(items) do
+    case Enum.find(items, fn item -> item["id"] == item_id end) do
+      nil -> {:error, :item_not_found}
+      item -> {:ok, item}
+    end
+  end
 end

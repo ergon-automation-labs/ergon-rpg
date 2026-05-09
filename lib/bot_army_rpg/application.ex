@@ -16,6 +16,7 @@ defmodule BotArmyRpg.Application do
       |> maybe_add_theme_store()
       |> maybe_add_consumer()
       |> maybe_add_lore_subscriber()
+      |> maybe_add_progression_subscriber()
       |> maybe_add_pulse_publisher()
       |> maybe_add_health_responder()
 
@@ -55,6 +56,10 @@ defmodule BotArmyRpg.Application do
     if @env == :test, do: children, else: [{BotArmyRpg.LoreSubscriber, []} | children]
   end
 
+  defp maybe_add_progression_subscriber(children) do
+    if @env == :test, do: children, else: [{BotArmyRpg.ProgressionSubscriber, []} | children]
+  end
+
   defp maybe_add_pulse_publisher(children) do
     if @env == :test, do: children, else: [{BotArmyRpg.PulsePublisher, []} | children]
   end
@@ -64,7 +69,8 @@ defmodule BotArmyRpg.Application do
       children
     else
       [
-        {BotArmyRpg.HealthResponder, [bot_name: :rpg, repo: BotArmyRpg.Repo, version: @version]}
+        {BotArmyRuntime.Health.Responder,
+         [bot_name: :rpg, repo: BotArmyRpg.Repo, version: @version]}
         | children
       ]
     end

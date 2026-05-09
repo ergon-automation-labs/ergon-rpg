@@ -29,7 +29,9 @@ defmodule BotArmyRpg.Defaults do
       "skills" => %{},
       "attacks" => [],
       "features" => [],
-      "spells" => %{}
+      "spells" => %{},
+      "xp" => 0,
+      "xp_to_next" => 500
     }
   end
 
@@ -144,7 +146,9 @@ defmodule BotArmyRpg.Defaults do
       "skills" => %{},
       "attacks" => [],
       "features" => [],
-      "spells" => %{}
+      "spells" => %{},
+      "xp" => 0,
+      "xp_to_next" => 500
     }
   end
 end
