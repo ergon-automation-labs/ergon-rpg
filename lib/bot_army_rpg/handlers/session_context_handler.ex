@@ -25,6 +25,10 @@ defmodule BotArmyRpg.Handlers.SessionContextHandler do
     Application.get_env(:bot_army_rpg, :theme_store, BotArmyRpg.ThemeStore)
   end
 
+  defp party_store do
+    Application.get_env(:bot_army_rpg, :party_store, BotArmyRpg.PartyStore)
+  end
+
   @doc """
   Gather narrative context for a user/bot interaction.
 
@@ -120,6 +124,10 @@ defmodule BotArmyRpg.Handlers.SessionContextHandler do
 
   defp fetch_character(tenant_id, _user_id, nil) do
     # No bot_id provided — return minimal context
+    Logger.debug(
+      "[SessionContext] No bot_id provided for tenant #{tenant_id}, skipping character fetch"
+    )
+
     {:ok, %{}}
   end
 
@@ -138,4 +146,90 @@ defmodule BotArmyRpg.Handlers.SessionContextHandler do
       {:error, reason} -> {:error, reason}
     end
   end
+
+  # ───────────────────────────────────────────────────────────────────────────
+  # Adventure Context Query (bot-centric)
+  # ───────────────────────────────────────────────────────────────────────────
+
+  @doc """
+  Query adventure context for a specific bot.
+
+  Expected payload:
+    - "bot_id" (string, required)
+    - "tenant_id" (string, optional)
+
+  Returns the bot's character, active session, scene facts, party, and theme.
+  """
+  def handle_adventure_context(message) do
+    params = message["payload"] || message
+
+    tenant_id =
+      params["tenant_id"] || message["tenant_id"] ||
+        BotArmyRuntime.Tenant.default_tenant_id()
+
+    bot_id = params["bot_id"]
+
+    if is_nil(bot_id) do
+      {:error, :missing_bot_id}
+    else
+      with {:ok, character} <- fetch_character_for_bot(tenant_id, bot_id),
+           user_id = character["user_id"],
+           {:ok, session} <- find_active_session_for_user(tenant_id, user_id),
+           {:ok, facts} <- fetch_scene_facts(tenant_id, session["id"], 10),
+           {:ok, theme} <- fetch_theme(tenant_id),
+           {:ok, party} <- fetch_party(tenant_id, user_id) do
+        context = %{
+          "bot_id" => bot_id,
+          "tenant_id" => tenant_id,
+          "character" => character,
+          "session" => %{
+            "id" => session["id"],
+            "status" => session["status"],
+            "scene_description" => session["scene_description"],
+            "metadata" => session["metadata"] || %{}
+          },
+          "scene_facts" => Enum.map(facts, & &1["content"]),
+          "theme" => theme,
+          "party" => party
+        }
+
+        {:ok, context}
+      end
+    end
+  end
+
+  defp fetch_character_for_bot(tenant_id, bot_id) do
+    case character_store().get_by_bot_id(tenant_id, bot_id) do
+      {:ok, char} -> {:ok, char}
+      {:error, :not_found} -> {:error, :no_character}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  defp find_active_session_for_user(tenant_id, user_id) do
+    case session_store().list(tenant_id) do
+      {:ok, sessions} ->
+        active =
+          Enum.filter(sessions, fn s ->
+            s["user_id"] == user_id and s["status"] == "active"
+          end)
+
+        case active do
+          [session | _] -> {:ok, session}
+          [] -> {:error, :no_active_session}
+        end
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  defp fetch_party(tenant_id, user_id) do
+    case party_store().get_party(tenant_id, user_id) do
+      {:ok, party} -> {:ok, party}
+      {:error, :not_found} -> {:ok, %{}}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
 end

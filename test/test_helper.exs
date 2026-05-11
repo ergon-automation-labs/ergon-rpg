@@ -5,3 +5,4 @@ Mox.defmock(BotArmyRpg.CharacterStoreMock, for: BotArmyRpg.CharacterStoreBehavio
 Mox.defmock(BotArmyRpg.SessionStoreMock, for: BotArmyRpg.SessionStoreBehaviour)
 Mox.defmock(BotArmyRpg.SceneFactStoreMock, for: BotArmyRpg.SceneFactStoreBehaviour)
 Mox.defmock(BotArmyRpg.ThemeStoreMock, for: BotArmyRpg.ThemeStoreBehaviour)
+Mox.defmock(BotArmyRpg.PartyStoreMock, for: BotArmyRpg.PartyStoreBehaviour)

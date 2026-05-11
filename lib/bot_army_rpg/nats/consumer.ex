@@ -95,6 +95,11 @@ defmodule BotArmyRpg.NATS.Consumer do
       type: :request_reply,
       description: "Gather narrative context for a user session"
     },
+    %{
+      subject: "rpg.adventure.context.query",
+      type: :request_reply,
+      description: "Query adventure context for a specific bot by bot_id"
+    },
     %{subject: "rpg.scene.fact.add", type: :request_reply, description: "Append a scene fact"},
     %{
       subject: "rpg.scene.fact.list",
@@ -356,6 +361,10 @@ defmodule BotArmyRpg.NATS.Consumer do
 
         "rpg.session.gather_context" ->
           BotArmyRpg.Handlers.SessionContextHandler.handle_gather_context(body)
+
+        "rpg.adventure.context.query" ->
+          BotArmyRpg.Handlers.SessionContextHandler.handle_adventure_context(body)
+
 
         "rpg.scene.fact.add" ->
           BotArmyRpg.Handlers.SceneFactHandler.handle_add(body)
