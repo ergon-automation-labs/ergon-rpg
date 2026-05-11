@@ -26,6 +26,10 @@ defmodule BotArmyRpg.CharacterStore do
   def award_xp(tenant_id, user_id, xp_amount) when is_integer(xp_amount) and xp_amount >= 0,
     do: GenServer.call(@server, {:award_xp, tenant_id, user_id, xp_amount})
 
+  def award_xp_to_bot(tenant_id, bot_id, xp_amount)
+      when is_binary(bot_id) and is_integer(xp_amount) and xp_amount >= 0,
+      do: GenServer.call(@server, {:award_xp_to_bot, tenant_id, bot_id, xp_amount})
+
   def add_item(tenant_id, user_id, item) when is_map(item),
     do: GenServer.call(@server, {:add_item, tenant_id, user_id, item})
 

@@ -90,6 +90,11 @@ defmodule BotArmyRpg.NATS.Consumer do
     },
     %{subject: "rpg.session.state", type: :request_reply, description: "Get session state"},
     %{subject: "rpg.session.list", type: :request_reply, description: "List sessions for tenant"},
+    %{
+      subject: "rpg.session.gather_context",
+      type: :request_reply,
+      description: "Gather narrative context for a user session"
+    },
     %{subject: "rpg.scene.fact.add", type: :request_reply, description: "Append a scene fact"},
     %{
       subject: "rpg.scene.fact.list",
@@ -283,45 +288,125 @@ defmodule BotArmyRpg.NATS.Consumer do
 
     result =
       case msg.topic do
-        "rpg.identity.bind" -> BotArmyRpg.Handlers.IdentityHandler.handle_bind(body)
-        "rpg.identity.resolve" -> BotArmyRpg.Handlers.IdentityHandler.handle_resolve(body)
-        "rpg.character.create" -> BotArmyRpg.Handlers.CharacterHandler.handle_create(body)
-        "rpg.character.get" -> BotArmyRpg.Handlers.CharacterHandler.handle_get(body)
-        "rpg.character.get_by_bot" -> BotArmyRpg.Handlers.CharacterHandler.handle_get_by_bot(body)
-        "rpg.character.update" -> BotArmyRpg.Handlers.CharacterHandler.handle_update(body)
-        "rpg.character.list" -> BotArmyRpg.Handlers.CharacterHandler.handle_list(body)
-        "rpg.character.ensure" -> BotArmyRpg.Handlers.CharacterHandler.handle_ensure(body)
-        "rpg.character.award_xp" -> BotArmyRpg.Handlers.CharacterHandler.handle_award_xp(body)
-        "rpg.character.equip" -> BotArmyRpg.Handlers.CharacterHandler.handle_equip(body)
-        "rpg.character.unequip" -> BotArmyRpg.Handlers.CharacterHandler.handle_unequip(body)
-        "rpg.loot.generate" -> BotArmyRpg.Handlers.LootHandler.handle_generate(body)
-        "rpg.roll.dice" -> BotArmyRpg.Handlers.RollHandler.handle_roll(body)
-        "rpg.session.start" -> BotArmyRpg.Handlers.SessionHandler.handle_start(body)
-        "rpg.session.resume" -> BotArmyRpg.Handlers.SessionHandler.handle_resume(body)
-        "rpg.session.join" -> BotArmyRpg.Handlers.SessionHandler.handle_join(body)
-        "rpg.session.leave" -> BotArmyRpg.Handlers.SessionHandler.handle_leave(body)
-        "rpg.session.pause" -> BotArmyRpg.Handlers.SessionHandler.handle_pause(body)
-        "rpg.session.end" -> BotArmyRpg.Handlers.SessionHandler.handle_end(body)
-        "rpg.session.describe" -> BotArmyRpg.Handlers.SessionHandler.handle_describe(body)
-        "rpg.session.state" -> BotArmyRpg.Handlers.SessionHandler.handle_state(body)
-        "rpg.session.list" -> BotArmyRpg.Handlers.SessionHandler.handle_list(body)
-        "rpg.scene.fact.add" -> BotArmyRpg.Handlers.SceneFactHandler.handle_add(body)
-        "rpg.scene.fact.list" -> BotArmyRpg.Handlers.SceneFactHandler.handle_list(body)
-        "rpg.theme.get" -> BotArmyRpg.Handlers.ThemeHandler.handle_get(body)
-        "rpg.theme.change" -> BotArmyRpg.Handlers.ThemeHandler.handle_change(body)
-        "rpg.theme.list" -> BotArmyRpg.Handlers.ThemeHandler.handle_list(body)
-        "rpg.lore.snapshot" -> BotArmyRpg.Handlers.LoreHandler.handle_snapshot(body)
-        "rpg.lore.ingest" -> BotArmyRpg.Handlers.LoreHandler.handle_ingest(body)
-        "rpg.turn.start_round" -> BotArmyRpg.Handlers.GMHandler.handle_turn_start_round(body)
-        "rpg.turn.next" -> BotArmyRpg.Handlers.GMHandler.handle_turn_next(body)
-        "rpg.turn.whose" -> BotArmyRpg.Handlers.GMHandler.handle_turn_whose(body)
-        "rpg.action.declare" -> BotArmyRpg.Handlers.GMHandler.handle_action_declare(body)
-        "rpg.action.resolve" -> BotArmyRpg.Handlers.GMHandler.handle_action_resolve(body)
-        "rpg.scene.narrate" -> BotArmyRpg.Handlers.GMHandler.handle_scene_narrate(body)
-        "rpg.quest.create" -> BotArmyRpg.Handlers.QuestHandler.handle_create(body)
-        "rpg.quest.list" -> BotArmyRpg.Handlers.QuestHandler.handle_list(body)
-        "rpg.quest.complete" -> BotArmyRpg.Handlers.QuestHandler.handle_complete(body)
-        _ -> {:error, :unknown_subject}
+        "rpg.identity.bind" ->
+          BotArmyRpg.Handlers.IdentityHandler.handle_bind(body)
+
+        "rpg.identity.resolve" ->
+          BotArmyRpg.Handlers.IdentityHandler.handle_resolve(body)
+
+        "rpg.character.create" ->
+          BotArmyRpg.Handlers.CharacterHandler.handle_create(body)
+
+        "rpg.character.get" ->
+          BotArmyRpg.Handlers.CharacterHandler.handle_get(body)
+
+        "rpg.character.get_by_bot" ->
+          BotArmyRpg.Handlers.CharacterHandler.handle_get_by_bot(body)
+
+        "rpg.character.update" ->
+          BotArmyRpg.Handlers.CharacterHandler.handle_update(body)
+
+        "rpg.character.list" ->
+          BotArmyRpg.Handlers.CharacterHandler.handle_list(body)
+
+        "rpg.character.ensure" ->
+          BotArmyRpg.Handlers.CharacterHandler.handle_ensure(body)
+
+        "rpg.character.award_xp" ->
+          BotArmyRpg.Handlers.CharacterHandler.handle_award_xp(body)
+
+        "rpg.character.equip" ->
+          BotArmyRpg.Handlers.CharacterHandler.handle_equip(body)
+
+        "rpg.character.unequip" ->
+          BotArmyRpg.Handlers.CharacterHandler.handle_unequip(body)
+
+        "rpg.loot.generate" ->
+          BotArmyRpg.Handlers.LootHandler.handle_generate(body)
+
+        "rpg.roll.dice" ->
+          BotArmyRpg.Handlers.RollHandler.handle_roll(body)
+
+        "rpg.session.start" ->
+          BotArmyRpg.Handlers.SessionHandler.handle_start(body)
+
+        "rpg.session.resume" ->
+          BotArmyRpg.Handlers.SessionHandler.handle_resume(body)
+
+        "rpg.session.join" ->
+          BotArmyRpg.Handlers.SessionHandler.handle_join(body)
+
+        "rpg.session.leave" ->
+          BotArmyRpg.Handlers.SessionHandler.handle_leave(body)
+
+        "rpg.session.pause" ->
+          BotArmyRpg.Handlers.SessionHandler.handle_pause(body)
+
+        "rpg.session.end" ->
+          BotArmyRpg.Handlers.SessionHandler.handle_end(body)
+
+        "rpg.session.describe" ->
+          BotArmyRpg.Handlers.SessionHandler.handle_describe(body)
+
+        "rpg.session.state" ->
+          BotArmyRpg.Handlers.SessionHandler.handle_state(body)
+
+        "rpg.session.list" ->
+          BotArmyRpg.Handlers.SessionHandler.handle_list(body)
+
+        "rpg.session.gather_context" ->
+          BotArmyRpg.Handlers.SessionContextHandler.handle_gather_context(body)
+
+        "rpg.scene.fact.add" ->
+          BotArmyRpg.Handlers.SceneFactHandler.handle_add(body)
+
+        "rpg.scene.fact.list" ->
+          BotArmyRpg.Handlers.SceneFactHandler.handle_list(body)
+
+        "rpg.theme.get" ->
+          BotArmyRpg.Handlers.ThemeHandler.handle_get(body)
+
+        "rpg.theme.change" ->
+          BotArmyRpg.Handlers.ThemeHandler.handle_change(body)
+
+        "rpg.theme.list" ->
+          BotArmyRpg.Handlers.ThemeHandler.handle_list(body)
+
+        "rpg.lore.snapshot" ->
+          BotArmyRpg.Handlers.LoreHandler.handle_snapshot(body)
+
+        "rpg.lore.ingest" ->
+          BotArmyRpg.Handlers.LoreHandler.handle_ingest(body)
+
+        "rpg.turn.start_round" ->
+          BotArmyRpg.Handlers.GMHandler.handle_turn_start_round(body)
+
+        "rpg.turn.next" ->
+          BotArmyRpg.Handlers.GMHandler.handle_turn_next(body)
+
+        "rpg.turn.whose" ->
+          BotArmyRpg.Handlers.GMHandler.handle_turn_whose(body)
+
+        "rpg.action.declare" ->
+          BotArmyRpg.Handlers.GMHandler.handle_action_declare(body)
+
+        "rpg.action.resolve" ->
+          BotArmyRpg.Handlers.GMHandler.handle_action_resolve(body)
+
+        "rpg.scene.narrate" ->
+          BotArmyRpg.Handlers.GMHandler.handle_scene_narrate(body)
+
+        "rpg.quest.create" ->
+          BotArmyRpg.Handlers.QuestHandler.handle_create(body)
+
+        "rpg.quest.list" ->
+          BotArmyRpg.Handlers.QuestHandler.handle_list(body)
+
+        "rpg.quest.complete" ->
+          BotArmyRpg.Handlers.QuestHandler.handle_complete(body)
+
+        _ ->
+          {:error, :unknown_subject}
       end
 
     reply =
