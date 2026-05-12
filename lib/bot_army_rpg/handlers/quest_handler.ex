@@ -110,7 +110,8 @@ defmodule BotArmyRpg.Handlers.QuestHandler do
               BotArmyRpg.NATS.Publisher.publish("rpg.quest.completed", updated_quest,
                 tenant_id: tenant_id,
                 user_id: user_id,
-                xp_awarded: xp_reward
+                xp_awarded: xp_reward,
+                character_level: updated_char["level"]
               )
 
               {:ok, updated_quest}

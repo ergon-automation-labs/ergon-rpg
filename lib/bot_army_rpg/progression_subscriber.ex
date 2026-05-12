@@ -264,7 +264,7 @@ defmodule BotArmyRpg.ProgressionSubscriber do
          leveled_up,
          old_level,
          loot,
-         quest_bonus \\ nil
+         quest_bonus
        ) do
     stats = Map.get(character, "stats", %{})
 

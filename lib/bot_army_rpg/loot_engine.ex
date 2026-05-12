@@ -12,7 +12,7 @@ defmodule BotArmyRpg.LootEngine do
   Returns a map: `{id, name, rarity, modifiers, source}` or nil if generation fails.
   """
   def generate(source, priority_or_intensity) when is_binary(source) do
-    rarity = roll_rarity()
+    rarity = roll_rarity(priority_or_intensity)
     item_name = pick_item(source, rarity)
 
     if item_name do
@@ -22,7 +22,8 @@ defmodule BotArmyRpg.LootEngine do
         "rarity" => rarity,
         "modifiers" => modifiers_for_rarity(rarity),
         "equipped" => false,
-        "source" => source
+        "source" => source,
+        "priority" => priority_or_intensity
       }
     else
       nil
@@ -33,9 +34,9 @@ defmodule BotArmyRpg.LootEngine do
     nil
   end
 
-  # Roll rarity 0-100
-  defp roll_rarity do
-    roll = Enum.random(1..100)
+  # Roll rarity 0-100, with intensity bonus shifting distribution upward
+  defp roll_rarity(priority_or_intensity) do
+    roll = Enum.random(1..100) + intensity_bonus(priority_or_intensity)
 
     cond do
       roll <= 60 -> "common"
@@ -45,6 +46,11 @@ defmodule BotArmyRpg.LootEngine do
       true -> "legendary"
     end
   end
+
+  defp intensity_bonus(priority) when priority in ["high", "urgent"], do: 10
+  defp intensity_bonus(intensity) when is_integer(intensity) and intensity >= 7, do: 15
+  defp intensity_bonus(intensity) when is_integer(intensity) and intensity >= 4, do: 5
+  defp intensity_bonus(_), do: 0
 
   # Pick item name based on source and rarity
   defp pick_item("gtd_task", rarity) do
