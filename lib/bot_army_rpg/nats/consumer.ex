@@ -122,6 +122,11 @@ defmodule BotArmyRpg.NATS.Consumer do
       description: "List available themes"
     },
     %{
+      subject: "rpg.theme.presets.list",
+      type: :request_reply,
+      description: "List registered theme presets (auto-discovered)"
+    },
+    %{
       subject: "rpg.lore.snapshot",
       type: :request_reply,
       description: "Lore Keeper world_snapshot (Resistance Chronicle rollup)"
@@ -365,7 +370,6 @@ defmodule BotArmyRpg.NATS.Consumer do
         "rpg.adventure.context.query" ->
           BotArmyRpg.Handlers.SessionContextHandler.handle_adventure_context(body)
 
-
         "rpg.scene.fact.add" ->
           BotArmyRpg.Handlers.SceneFactHandler.handle_add(body)
 
@@ -380,6 +384,9 @@ defmodule BotArmyRpg.NATS.Consumer do
 
         "rpg.theme.list" ->
           BotArmyRpg.Handlers.ThemeHandler.handle_list(body)
+
+        "rpg.theme.presets.list" ->
+          BotArmyRpg.Handlers.ThemeHandler.handle_presets_list(body)
 
         "rpg.lore.snapshot" ->
           BotArmyRpg.Handlers.LoreHandler.handle_snapshot(body)

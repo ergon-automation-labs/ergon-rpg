@@ -3,15 +3,43 @@ defmodule BotArmyRpg.GM.RulesEngine do
   Pure functions for interpreting theme rules and resolving actions.
 
   Operates on the `rules` jsonb map stored in a theme.
+
+  ## Mechanics chassis
+
+  Resolution is theme-driven. A theme declares its dice and success bands
+  under `rules["resolution"]`:
+
+      %{
+        "dice" => "2d6",                       # optional, falls back to dice_notation
+        "success_bands" => [
+          %{"name" => "critical_success", "type" => "gte_dc_plus",  "value" => 4},
+          %{"name" => "success",          "type" => "gte_dc",       "value" => 0},
+          %{"name" => "failure",          "type" => "lt_dc",        "value" => 0},
+          %{"name" => "critical_failure", "type" => "lte_dc_minus", "value" => 4}
+        ]
+      }
+
+  Band types:
+
+    * `"gte_dc_plus"`   — `roll >= dc + value`
+    * `"gte_dc"`        — `roll >= dc` (value ignored)
+    * `"lt_dc"`         — `roll < dc`  (value ignored)
+    * `"lte_dc_minus"`  — `roll <= dc - value`
+    * `"eq_max"`        — `roll == value` (e.g. natural 20 on d20)
+
+  Bands are walked in declaration order; the first match wins. When a theme
+  does not declare `success_bands`, `resolve_outcome/3` falls back to the
+  legacy d20 ±10 chassis so existing themes work unchanged.
   """
 
   @doc """
   Build dice notation for an action from character stats and theme rules.
 
-  Falls back to `"1d20"` if no rules are present.
+  Reads `rules["resolution"]["dice"]` first, then `rules["dice_notation"]`,
+  then defaults to `"1d20"`.
   """
   def dice_for(action_type, character, rules) do
-    base = rules["dice_notation"] || "1d20"
+    base = get_in(rules, ["resolution", "dice"]) || rules["dice_notation"] || "1d20"
     stat_key = stat_for_action(action_type, rules)
     modifier = stat_modifier(character, stat_key)
 
@@ -46,8 +74,43 @@ defmodule BotArmyRpg.GM.RulesEngine do
 
   @doc """
   Resolve the degree of success from roll total, DC, and theme rules.
+
+  When `rules["resolution"]["success_bands"]` is set, bands are walked in
+  declaration order and the first matching band's `name` wins. Otherwise
+  the legacy d20 ±10 chassis applies.
   """
   def resolve_outcome(roll_total, dc, rules) do
+    case get_in(rules, ["resolution", "success_bands"]) do
+      bands when is_list(bands) and bands != [] ->
+        walk_bands(roll_total, dc, bands) || legacy_outcome(roll_total, dc, rules)
+
+      _ ->
+        legacy_outcome(roll_total, dc, rules)
+    end
+  end
+
+  defp walk_bands(roll_total, dc, bands) do
+    Enum.find_value(bands, fn band ->
+      if band_matches?(band, roll_total, dc), do: band["name"], else: nil
+    end)
+  end
+
+  defp band_matches?(%{"type" => "gte_dc_plus", "value" => v}, roll, dc) when is_integer(v),
+    do: roll >= dc + v
+
+  defp band_matches?(%{"type" => "gte_dc"}, roll, dc), do: roll >= dc
+
+  defp band_matches?(%{"type" => "lt_dc"}, roll, dc), do: roll < dc
+
+  defp band_matches?(%{"type" => "lte_dc_minus", "value" => v}, roll, dc) when is_integer(v),
+    do: roll <= dc - v
+
+  defp band_matches?(%{"type" => "eq_max", "value" => v}, roll, _dc) when is_integer(v),
+    do: roll == v
+
+  defp band_matches?(_, _, _), do: false
+
+  defp legacy_outcome(roll_total, dc, rules) do
     degrees = rules["degrees_of_success"] || %{}
 
     cond do

@@ -3,9 +3,16 @@ defmodule BotArmyRpg.GM.Narrator do
   Builds prompts and calls the LLM bot for GM narration.
 
   Falls back to template-based narration if the LLM is unavailable.
+
+  When the current theme reskins a bot's archetype (see
+  `BotArmyRpg.Themes.Archetype`), the actor's themed identity is woven into
+  both the LLM prompt and the fallback prose without mutating the character
+  row.
   """
 
   require Logger
+
+  alias BotArmyRpg.Themes.Archetype
 
   @llm_timeout_ms 3000
   @circuit_breaker_key "rpg:gm:llm.narrate"
@@ -27,14 +34,19 @@ defmodule BotArmyRpg.GM.Narrator do
   @doc """
   Narrate an action resolution using theme vocabulary.
 
+  Pass `character` (the actor's character map, including `"bot_id"`) to
+  enable theme-aware archetype hints; otherwise narration falls back to the
+  raw action description.
+
   Returns `{:ok, String.t()}` or `{:error, reason}`.
   """
-  def narrate_action(action, resolution, theme) do
-    prompt = build_action_prompt(action, resolution, theme)
+  def narrate_action(action, resolution, theme, character \\ nil) do
+    archetype = Archetype.for_character(theme, character || %{})
+    prompt = build_action_prompt(action, resolution, theme, archetype)
 
     case call_llm(prompt) do
       {:ok, text} -> {:ok, text}
-      {:error, _} -> {:ok, fallback_action(action, resolution, theme)}
+      {:error, _} -> {:ok, fallback_action(action, resolution, theme, archetype, character)}
     end
   end
 
@@ -73,7 +85,7 @@ defmodule BotArmyRpg.GM.Narrator do
     |> String.trim()
   end
 
-  defp build_action_prompt(action, resolution, theme) do
+  defp build_action_prompt(action, resolution, theme, archetype) do
     setting = theme["setting"] || "unknown realm"
     tone = theme["tone"] || "neutral"
     vocab = theme["vocabulary"] || %{}
@@ -92,10 +104,14 @@ defmodule BotArmyRpg.GM.Narrator do
           Enum.map_join(vocab, ", ", fn {k, v} -> "#{k} → #{v}" end) <> "."
       end
 
+    archetype_text = Archetype.prompt_hint(archetype)
+
     """
     You are the Game Master narrating an action in a #{setting} setting with a #{tone} tone.
 
     #{vocab_text}
+
+    #{archetype_text}
 
     #{name} attempts a #{action_type}.
     Roll: #{total} vs DC #{dc}. Outcome: #{outcome}.
@@ -141,19 +157,23 @@ defmodule BotArmyRpg.GM.Narrator do
     "You find yourself in #{desc}. The air of #{setting} feels #{tone || "heavy"}."
   end
 
-  defp fallback_action(action, resolution, theme) do
+  defp fallback_action(action, resolution, theme, archetype, character) do
     vocab = theme["vocabulary"] || %{}
-    name = action["description"] || "The character"
     outcome = resolution["outcome"]
-
     verb = Map.get(vocab, action["action_type"], action["action_type"])
 
+    actor =
+      case archetype do
+        {:themed, _} -> Archetype.display_label(archetype)
+        _ -> action["description"] || (character && character["name"]) || "The character"
+      end
+
     case outcome do
-      "critical_success" -> "#{name} executes a masterful #{verb}!"
-      "success" -> "#{name} #{verb}s with skill."
-      "failure" -> "#{name} #{verb}s, but falls short."
-      "critical_failure" -> "#{name} #{verb}s disastrously!"
-      _ -> "#{name} #{verb}s."
+      "critical_success" -> "#{actor} executes a masterful #{verb}!"
+      "success" -> "#{actor} #{verb}s with skill."
+      "failure" -> "#{actor} #{verb}s, but falls short."
+      "critical_failure" -> "#{actor} #{verb}s disastrously!"
+      _ -> "#{actor} #{verb}s."
     end
   end
 end

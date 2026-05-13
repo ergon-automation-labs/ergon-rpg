@@ -157,7 +157,8 @@ defmodule BotArmyRpg.Handlers.GMHandler do
             action,
             resolution,
             session,
-            theme
+            theme,
+            character
           )
 
         {:error, reason} ->
@@ -203,27 +204,32 @@ defmodule BotArmyRpg.Handlers.GMHandler do
 
   # --- Private ---
 
-  defp apply_resolution(tenant_id, session_id, character_id, action, resolution, session, theme) do
-    # Apply stat updates
+  defp apply_resolution(
+         tenant_id,
+         session_id,
+         character_id,
+         action,
+         resolution,
+         session,
+         theme,
+         character
+       ) do
     if resolution["stat_updates"] != %{} do
-      {:ok, character} = character_store().get(tenant_id, character_id)
-      new_stats = Map.merge(character["stats"] || %{}, resolution["stat_updates"])
+      {:ok, latest} = character_store().get(tenant_id, character_id)
+      new_stats = Map.merge(latest["stats"] || %{}, resolution["stat_updates"])
       character_store().update(tenant_id, character_id, %{"stats" => new_stats})
     end
 
-    # Record turn
     turn_meta =
       TurnManager.record_turn(session, character_id, action, resolution["outcome"])
 
-    # Clear pending action
     metadata = session["metadata"] || %{}
     cleaned_metadata = Map.drop(metadata, ["pending_action"])
     merged_metadata = Map.merge(cleaned_metadata, turn_meta)
 
     session_store().update(tenant_id, session_id, %{"metadata" => merged_metadata})
 
-    # Generate narration
-    {:ok, narration} = Narrator.narrate_action(action, resolution, theme)
+    {:ok, narration} = Narrator.narrate_action(action, resolution, theme, character)
 
     # Add scene fact
     scene_fact_store().append(%{
