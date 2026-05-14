@@ -8,7 +8,7 @@ nats_port =
   if config_env() == :test do
     4223
   else
-    String.to_integer(System.get_env("NATS_PORT", "4222"))
+    String.to_integer(System.get_env("NATS_PORT", "4223"))
   end
 
 config :bot_army_runtime, :nats,

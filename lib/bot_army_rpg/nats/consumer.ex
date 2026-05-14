@@ -137,6 +137,11 @@ defmodule BotArmyRpg.NATS.Consumer do
       description: "Ingest lore signals (explicit facets or ops_deploy / system_health shorthand)"
     },
     %{
+      subject: "rpg.world.snapshot",
+      type: :request_reply,
+      description: "Get world snapshot (theme + system state + recent victories) for tenant/user"
+    },
+    %{
       subject: "rpg.turn.start_round",
       type: :request_reply,
       description: "Initialize turn order from session characters"
@@ -393,6 +398,9 @@ defmodule BotArmyRpg.NATS.Consumer do
 
         "rpg.lore.ingest" ->
           BotArmyRpg.Handlers.LoreHandler.handle_ingest(body)
+
+        "rpg.world.snapshot" ->
+          BotArmyRpg.Handlers.WorldSnapshotHandler.handle_snapshot(body)
 
         "rpg.turn.start_round" ->
           BotArmyRpg.Handlers.GMHandler.handle_turn_start_round(body)
