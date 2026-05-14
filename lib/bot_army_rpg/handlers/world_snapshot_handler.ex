@@ -27,24 +27,28 @@ defmodule BotArmyRpg.Handlers.WorldSnapshotHandler do
     tenant_id = params["tenant_id"] || message["tenant_id"] || default_tenant_id()
     user_id = params["user_id"] || message["user_id"] || "anonymous"
 
-    {:ok, theme} = get_theme_snapshot(tenant_id)
-
-    world_snapshot = %{
-      "tenant_id" => tenant_id,
-      "user_id" => user_id,
-      "timestamp" => DateTime.utc_now() |> DateTime.to_iso8601(),
-      "campaign_theme" => theme,
-      "system_metadata" => %{
-        "note" =>
-          "Bridge.world.snapshot facade enriches with active bots, recent victories, and agent details"
+    with {:ok, theme} <- get_theme_snapshot(tenant_id) do
+      world_snapshot = %{
+        "tenant_id" => tenant_id,
+        "user_id" => user_id,
+        "timestamp" => DateTime.utc_now() |> DateTime.to_iso8601(),
+        "campaign_theme" => theme,
+        "system_metadata" => %{
+          "note" =>
+            "Bridge.world.snapshot facade enriches with active bots, recent victories, and agent details"
+        }
       }
-    }
 
-    Logger.info(
-      "[WorldSnapshotHandler] Generated snapshot for tenant #{tenant_id}, user #{user_id}"
-    )
+      Logger.info(
+        "[WorldSnapshotHandler] Generated snapshot for tenant #{tenant_id}, user #{user_id}"
+      )
 
-    {:ok, world_snapshot}
+      {:ok, world_snapshot}
+    else
+      error ->
+        Logger.warning("[WorldSnapshotHandler] Failed to get theme snapshot: #{inspect(error)}")
+        {:error, "theme_load_failed"}
+    end
   end
 
   defp get_theme_snapshot(tenant_id) do
