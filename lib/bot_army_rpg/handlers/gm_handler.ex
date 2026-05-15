@@ -229,6 +229,22 @@ defmodule BotArmyRpg.Handlers.GMHandler do
 
     session_store().update(tenant_id, session_id, %{"metadata" => merged_metadata})
 
+    # Record outcome: action resolution success/failure
+    try do
+      outcome = Map.get(resolution, "outcome", "unknown")
+      # Map RPG outcomes to OutcomeTracker's expected values
+      outcome_result = if outcome in ["success", "critical"], do: "success", else: "failure"
+
+      BotArmyLearning.OutcomeTracker.record(
+        character_id,
+        "rpg.action_resolution",
+        "act",
+        outcome_result
+      )
+    rescue
+      _ -> :ok
+    end
+
     {:ok, narration} = Narrator.narrate_action(action, resolution, theme, character)
 
     # Add scene fact

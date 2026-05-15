@@ -20,6 +20,7 @@ defmodule BotArmyRpg.Application do
       |> maybe_add_progression_subscriber()
       |> maybe_add_pulse_publisher()
       |> maybe_add_daily_narrator()
+      |> maybe_add_outcome_tracker()
       |> maybe_add_health_responder()
 
     opts = [strategy: :one_for_one, name: BotArmyRpg.Supervisor]
@@ -84,5 +85,9 @@ defmodule BotArmyRpg.Application do
         | children
       ]
     end
+  end
+
+  defp maybe_add_outcome_tracker(children) do
+    if @env == :test, do: children, else: [{BotArmyLearning.OutcomeTracker, []} | children]
   end
 end
