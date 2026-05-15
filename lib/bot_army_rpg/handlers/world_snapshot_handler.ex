@@ -54,7 +54,7 @@ defmodule BotArmyRpg.Handlers.WorldSnapshotHandler do
   defp get_theme_snapshot(tenant_id) do
     case theme_store().get_current(tenant_id) do
       {:ok, theme} -> {:ok, theme}
-      :not_found -> {:ok, %{}}
+      {:error, :not_found} -> {:ok, %{}}
       error -> error
     end
   end
