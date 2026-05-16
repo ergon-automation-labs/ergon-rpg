@@ -23,6 +23,16 @@ config :bot_army_rpg, BotArmyRpg.Repo,
   password: "postgres",
   pool_size: 10
 
+config :bot_army_learning, ecto_repos: [BotArmyLearning.Repo]
+
+config :bot_army_learning, BotArmyLearning.Repo,
+  database: "ergon_rpg",
+  hostname: "localhost",
+  port: 30003,
+  username: "postgres",
+  password: "postgres",
+  pool_size: 5
+
 if File.exists?("config/#{Mix.env()}.exs") do
   import_config "#{Mix.env()}.exs"
 end
