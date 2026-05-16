@@ -33,3 +33,22 @@ config :bot_army_rpg, BotArmyRpg.Repo,
       "postgres",
   pool_size: 3,
   ssl: false
+
+config :bot_army_learning, ecto_repos: [BotArmyLearning.Repo]
+
+config :bot_army_learning, BotArmyLearning.Repo,
+  database:
+    System.get_env("BOT_ARMY_RPG_DB_NAME") || System.get_env("DATABASE_NAME") || "ergon_rpg",
+  hostname:
+    System.get_env("BOT_ARMY_RPG_DB_HOST") || System.get_env("DATABASE_HOST") || "localhost",
+  port:
+    String.to_integer(
+      System.get_env("BOT_ARMY_RPG_DB_PORT") || System.get_env("DATABASE_PORT") || "30003"
+    ),
+  username:
+    System.get_env("BOT_ARMY_RPG_DB_USER") || System.get_env("DATABASE_USER") || "postgres",
+  password:
+    System.get_env("BOT_ARMY_RPG_DB_PASSWORD") || System.get_env("DATABASE_PASSWORD") ||
+      "postgres",
+  pool_size: 5,
+  ssl: false
