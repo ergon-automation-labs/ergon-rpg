@@ -101,24 +101,31 @@ defmodule BotArmyRpg.ProjectSubscriber do
   end
 
   defp handle_project_created(tenant_id, event) do
-    project = Map.get(event, "project", %{})
-    project_id = Map.get(project, "id")
-    project_name = Map.get(project, "name")
+    try do
+      project = Map.get(event, "project", %{})
+      project_id = Map.get(project, "id")
+      project_name = Map.get(project, "name")
 
-    if project_id and project_name do
-      case create_campaign(tenant_id, project_id) do
-        {:ok, campaign} ->
-          Logger.info(
-            "[ProjectSubscriber] Campaign created for project_id=#{project_id}, campaign_id=#{campaign["id"]}"
-          )
+      if project_id and project_name do
+        case create_campaign(tenant_id, project_id) do
+          {:ok, campaign} ->
+            Logger.info(
+              "[ProjectSubscriber] Campaign created for project_id=#{project_id}, campaign_id=#{campaign["id"]}"
+            )
 
-        {:error, reason} ->
-          Logger.warning(
-            "[ProjectSubscriber] Failed to create campaign for project_id=#{project_id}: #{inspect(reason)}"
-          )
+          {:error, reason} ->
+            Logger.warning(
+              "[ProjectSubscriber] Failed to create campaign for project_id=#{project_id}: #{inspect(reason)}"
+            )
+        end
+      else
+        Logger.debug("[ProjectSubscriber] Incomplete project data, skipping campaign creation")
       end
-    else
-      Logger.debug("[ProjectSubscriber] Incomplete project data, skipping campaign creation")
+    rescue
+      e ->
+        Logger.error(
+          "[ProjectSubscriber] Exception in handle_project_created: #{inspect(e)}\n#{Exception.format_stacktrace(__STACKTRACE__)}"
+        )
     end
   end
 
