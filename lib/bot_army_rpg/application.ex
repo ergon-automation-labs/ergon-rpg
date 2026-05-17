@@ -36,6 +36,7 @@ defmodule BotArmyRpg.Application do
             {BotArmyRpg.NATS.Consumer, []},
             {BotArmyRpg.LoreSubscriber, []},
             {BotArmyRpg.ProgressionSubscriber, []},
+            {BotArmyRpg.ProjectSubscriber, []},
             {BotArmyRpg.PulsePublisher, []},
             {BotArmyRpg.DailyNarrator, []},
             {BotArmyRpg.ConsequenceEngine, []},
