@@ -39,6 +39,28 @@ defmodule BotArmyRpg.QuestStore do
     GenServer.call(@server, {:find_by_gtd_id, character_id, gtd_id})
   end
 
+  def list_completed_by_category(tenant_id, category, limit \\ 10) when is_binary(tenant_id) do
+    import Ecto.Query
+
+    BotArmyRpg.Repo.all(
+      from(q in BotArmyRpg.Schemas.Quest,
+        where:
+          q.tenant_id == ^tenant_id and q.source_category == ^category and
+            q.status == "completed" and not is_nil(q.outcome_score),
+        order_by: [desc: q.inserted_at],
+        limit: ^limit,
+        select: %{
+          id: q.id,
+          outcome_score: q.outcome_score,
+          success_band: q.success_band,
+          inserted_at: q.inserted_at
+        }
+      )
+    )
+  rescue
+    _ -> []
+  end
+
   @impl true
   def init(_opts) do
     Logger.info("[QuestStore] Starting")

@@ -67,6 +67,7 @@ defmodule BotArmyRpg.QuestEngine do
         "potential_loot_rarity" => loot_rarity
       },
       "linked_gtd_id" => gtd_id,
+      "source_category" => Map.get(gtd_task, "source_category") || Map.get(gtd_task, "category"),
       "created_at" => DateTime.utc_now() |> DateTime.to_iso8601()
     }
   end
@@ -82,25 +83,50 @@ defmodule BotArmyRpg.QuestEngine do
   Mark quest as completed with rewards calculation.
 
   Returns: %{"status" => "completed", "rewards_earned" => {...}, ...}
+
+  Accepts optional success_band to record outcome tier.
   """
-  def mark_completed(quest, character_level) when is_map(quest) do
+  def mark_completed(quest, character_level, opts \\ []) when is_map(quest) do
     xp_multiplier = get_in(quest, ["rewards", "xp_multiplier"]) || 1.0
+    success_band = Keyword.get(opts, :success_band)
+    outcome_score = outcome_score_for_band(success_band)
 
     completed_quest =
       quest
       |> Map.put("status", "completed")
       |> Map.put("completed_at", DateTime.utc_now() |> DateTime.to_iso8601())
 
-    # Calculate actual XP reward based on level
+    # Apply outcome modifier to XP
+    effective_multiplier = xp_multiplier * (outcome_score || 1.0)
     base_xp = 100
-    xp_reward = trunc(base_xp * character_level * xp_multiplier)
+    xp_reward = trunc(base_xp * character_level * effective_multiplier)
 
-    completed_quest
-    |> Map.put("rewards_earned", %{
-      "xp" => xp_reward,
-      "bonus_multiplier" => xp_multiplier
-    })
+    completed_quest =
+      completed_quest
+      |> Map.put("rewards_earned", %{
+        "xp" => xp_reward,
+        "bonus_multiplier" => effective_multiplier
+      })
+
+    # Record outcome if provided
+    if success_band do
+      completed_quest
+      |> Map.put("success_band", success_band)
+      |> Map.put("outcome_score", outcome_score)
+    else
+      completed_quest
+    end
   end
+
+  @doc """
+  Maps success band to outcome score (0.0 - 1.0).
+  """
+  def outcome_score_for_band("critical_success"), do: 1.0
+  def outcome_score_for_band("full_success"), do: 0.8
+  def outcome_score_for_band("partial_success"), do: 0.5
+  def outcome_score_for_band("complication"), do: 0.2
+  def outcome_score_for_band("catastrophic_failure"), do: 0.0
+  def outcome_score_for_band(_), do: 1.0
 
   @doc """
   Get quest progress as a percentage.

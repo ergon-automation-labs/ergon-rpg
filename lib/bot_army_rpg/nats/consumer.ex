@@ -41,6 +41,41 @@ defmodule BotArmyRpg.NATS.Consumer do
       description: "Ensure bot character exists"
     },
     %{
+      subject: "rpg.campaign.start",
+      type: :request_reply,
+      description: "Start a new campaign linked to a GTD project"
+    },
+    %{
+      subject: "rpg.campaign.get",
+      type: :request_reply,
+      description: "Get campaign by project ID or campaign ID"
+    },
+    %{
+      subject: "rpg.campaign.close",
+      type: :request_reply,
+      description: "Close a campaign and generate scorecard"
+    },
+    %{
+      subject: "rpg.campaign.roster.get",
+      type: :request_reply,
+      description: "Get NPC roster for a campaign"
+    },
+    %{
+      subject: "rpg.campaign.roster.update",
+      type: :request_reply,
+      description: "Add or update NPC roster entry"
+    },
+    %{
+      subject: "rpg.campaign.xp.add",
+      type: :request_reply,
+      description: "Add XP event to campaign ledger"
+    },
+    %{
+      subject: "rpg.campaign.xp.ledger",
+      type: :request_reply,
+      description: "Query XP ledger with optional filtering"
+    },
+    %{
       subject: "rpg.character.award_xp",
       type: :request_reply,
       description: "Award XP to a character and handle level-up"
@@ -326,6 +361,27 @@ defmodule BotArmyRpg.NATS.Consumer do
 
         "rpg.character.ensure" ->
           BotArmyRpg.Handlers.CharacterHandler.handle_ensure(body)
+
+        "rpg.campaign.start" ->
+          BotArmyRpg.Handlers.CampaignHandler.handle_start(body)
+
+        "rpg.campaign.get" ->
+          BotArmyRpg.Handlers.CampaignHandler.handle_get(body)
+
+        "rpg.campaign.close" ->
+          BotArmyRpg.Handlers.CampaignHandler.handle_close(body)
+
+        "rpg.campaign.roster.get" ->
+          BotArmyRpg.Handlers.CampaignHandler.handle_roster_get(body)
+
+        "rpg.campaign.roster.update" ->
+          BotArmyRpg.Handlers.CampaignHandler.handle_roster_update(body)
+
+        "rpg.campaign.xp.add" ->
+          BotArmyRpg.Handlers.CampaignHandler.handle_xp_add(body)
+
+        "rpg.campaign.xp.ledger" ->
+          BotArmyRpg.Handlers.CampaignHandler.handle_xp_ledger(body)
 
         "rpg.character.award_xp" ->
           BotArmyRpg.Handlers.CharacterHandler.handle_award_xp(body)
