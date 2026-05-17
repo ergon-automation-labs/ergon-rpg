@@ -36,6 +36,10 @@ defmodule BotArmyRpg.CampaignStore do
     GenServer.call(__MODULE__, {:update, rpg_campaign_id, attrs})
   end
 
+  def handle_list_active do
+    GenServer.call(__MODULE__, :list_active)
+  end
+
   def handle_call({:insert, attrs}, _from, state) do
     case Repo.insert(Campaign.changeset(%Campaign{}, attrs)) do
       {:ok, campaign} ->
@@ -74,6 +78,16 @@ defmodule BotArmyRpg.CampaignStore do
             {:reply, {:error, reason}, state}
         end
     end
+  end
+
+  def handle_call(:list_active, _from, state) do
+    active =
+      state
+      |> Map.values()
+      |> Enum.uniq_by(& &1["id"])
+      |> Enum.filter(&(&1["status"] == "active"))
+
+    {:reply, active, state}
   end
 
   defp index_by_project_and_id(campaigns) do

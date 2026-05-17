@@ -52,3 +52,10 @@ config :bot_army_learning, BotArmyLearning.Repo,
       "postgres",
   pool_size: 5,
   ssl: false
+
+config :bot_army_rpg,
+  stale_campaign_closer_enabled:
+    System.get_env("STALE_CAMPAIGN_CLOSER_ENABLED", "true") in ["1", "true", "yes"],
+  stale_campaign_stale_days: String.to_integer(System.get_env("STALE_CAMPAIGN_STALE_DAYS", "30")),
+  stale_campaign_check_interval_ms:
+    String.to_integer(System.get_env("STALE_CAMPAIGN_CHECK_INTERVAL_MS", "3600000"))

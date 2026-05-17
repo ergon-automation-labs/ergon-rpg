@@ -37,6 +37,7 @@ defmodule BotArmyRpg.Application do
             {BotArmyRpg.LoreSubscriber, []},
             {BotArmyRpg.ProgressionSubscriber, []},
             {BotArmyRpg.ProjectSubscriber, []},
+            {BotArmyRpg.StaleCampaignCloser, []},
             {BotArmyRpg.PulsePublisher, []},
             {BotArmyRpg.DailyNarrator, []},
             {BotArmyRpg.ConsequenceEngine, []},

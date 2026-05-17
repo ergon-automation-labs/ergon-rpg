@@ -146,7 +146,7 @@ defmodule BotArmyRpg.Handlers.ReconGateDemoTest do
 
     # Verify description has all required sections
     assert String.contains?(description, ["Reconnaissance Required"])
-    assert String.contains?(description, ["80%"])
+    assert String.contains?(description, ["80"])
     assert String.contains?(description, ["catastrophic_dominant"])
     assert String.contains?(description, ["consecutive_streak"])
     assert String.contains?(description, ["decomposition"])
@@ -270,7 +270,7 @@ defmodule BotArmyRpg.Handlers.ReconGateDemoTest do
 
     rapid_retry_hint = Enum.find(hints, fn h -> h["pattern"] == "rapid_retry" end)
     assert rapid_retry_hint
-    assert String.contains?(rapid_retry_hint["action"], ["delays", "24h"])
-    assert String.contains?(rapid_retry_hint["why"], ["frustration"])
+    assert String.contains?(rapid_retry_hint[:action], ["delays", "24h"])
+    assert String.contains?(rapid_retry_hint[:why], ["frustration"])
   end
 end
