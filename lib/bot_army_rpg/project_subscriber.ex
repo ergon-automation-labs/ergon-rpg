@@ -26,45 +26,64 @@ defmodule BotArmyRpg.ProjectSubscriber do
 
   @impl true
   def handle_continue(:connect, state) do
-    try do
-      case GenServer.call(BotArmyRuntime.NATS.Connection, :get_connection, 5_000) do
-        {:ok, conn} ->
-          BotArmyRuntime.NATS.Connection.subscribe_to_status()
+    Logger.debug("[ProjectSubscriber] Attempting to connect to NATS...")
 
-          Logger.info(
-            "[ProjectSubscriber] Connected to NATS, subscribing to project creation events"
-          )
+    case get_nats_connection() do
+      {:ok, conn} ->
+        BotArmyRuntime.NATS.Connection.subscribe_to_status()
 
-          subscriptions =
-            @subjects
-            |> Enum.map(fn subject ->
-              case Gnat.sub(conn, self(), subject) do
-                {:ok, sub} ->
-                  Logger.info("[ProjectSubscriber] Subscribed to #{subject}")
-                  sub
+        Logger.info(
+          "[ProjectSubscriber] Connected to NATS, subscribing to project creation events"
+        )
 
-                {:error, reason} ->
-                  Logger.error(
-                    "[ProjectSubscriber] Failed to subscribe to #{subject}: #{inspect(reason)}"
-                  )
+        subscriptions =
+          @subjects
+          |> Enum.map(fn subject ->
+            case Gnat.sub(conn, self(), subject) do
+              {:ok, sub} ->
+                Logger.info("[ProjectSubscriber] Subscribed to #{subject}")
+                sub
 
-                  nil
-              end
-            end)
-            |> Enum.reject(&is_nil/1)
+              {:error, reason} ->
+                Logger.error(
+                  "[ProjectSubscriber] Failed to subscribe to #{subject}: #{inspect(reason)}"
+                )
 
-          {:noreply, %{state | subscriptions: subscriptions, conn: conn}}
+                nil
+            end
+          end)
+          |> Enum.reject(&is_nil/1)
 
-        {:error, _reason} ->
-          Logger.warning("[ProjectSubscriber] NATS connection not ready, will retry")
-          Process.send_after(self(), :connect_retry, @reconnect_delay_ms)
-          {:noreply, state}
-      end
-    rescue
-      e ->
-        Logger.warning("[ProjectSubscriber] Connection attempt failed: #{inspect(e)}, will retry")
+        {:noreply, %{state | subscriptions: subscriptions, conn: conn}}
+
+      {:error, reason} ->
+        Logger.warning(
+          "[ProjectSubscriber] NATS connection not ready (#{inspect(reason)}), will retry"
+        )
+
         Process.send_after(self(), :connect_retry, @reconnect_delay_ms)
         {:noreply, state}
+    end
+  end
+
+  defp get_nats_connection do
+    try do
+      case GenServer.call(BotArmyRuntime.NATS.Connection, :get_connection, 5_000) do
+        {:ok, conn} -> {:ok, conn}
+        {:error, reason} -> {:error, reason}
+      end
+    catch
+      :exit, _reason ->
+        Logger.debug("[ProjectSubscriber] NATS.Connection not available yet")
+        {:error, :nats_connection_not_available}
+
+      e ->
+        Logger.debug("[ProjectSubscriber] Error getting NATS connection: #{inspect(e)}")
+        {:error, e}
+    rescue
+      e ->
+        Logger.debug("[ProjectSubscriber] Exception getting NATS connection: #{inspect(e)}")
+        {:error, e}
     end
   end
 
