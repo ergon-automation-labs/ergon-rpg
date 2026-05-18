@@ -106,7 +106,7 @@ defmodule BotArmyRpg.ProjectSubscriber do
       project_id = Map.get(project, "id")
       project_name = Map.get(project, "name")
 
-      if project_id and project_name do
+      if project_id && project_name do
         case create_campaign(tenant_id, project_id) do
           {:ok, campaign} ->
             Logger.info(
