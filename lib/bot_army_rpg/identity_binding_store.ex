@@ -1,4 +1,5 @@
 defmodule BotArmyRpg.IdentityBindingStore do
+  @moduledoc "In-memory store mapping user identities to RPG characters."
   use GenServer
   require Logger
 

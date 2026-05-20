@@ -1,4 +1,5 @@
 defmodule BotArmyRpg.SceneFactStore do
+  @moduledoc "In-memory + Ecto store for scene facts and narrative state."
   use GenServer
   require Logger
 

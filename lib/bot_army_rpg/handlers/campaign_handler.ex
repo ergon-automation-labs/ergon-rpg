@@ -1,4 +1,5 @@
 defmodule BotArmyRpg.Handlers.CampaignHandler do
+  @moduledoc "Handles NATS messages for campaign start, update, and lifecycle."
   require Logger
   alias BotArmyRpg.{CampaignStore, XpEventStore, CampaignRosterStore}
 

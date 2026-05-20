@@ -1,4 +1,5 @@
 defmodule BotArmyRpg.SessionStore do
+  @moduledoc "In-memory + Ecto store for active RPG session state."
   use GenServer
   require Logger
 

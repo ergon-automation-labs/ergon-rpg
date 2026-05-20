@@ -1,4 +1,5 @@
 defmodule BotArmyRpg.Handlers.IdentityHandler do
+  @moduledoc "Handles NATS messages for binding/unbinding user identities to characters."
   require Logger
 
   def handle_bind(message) do

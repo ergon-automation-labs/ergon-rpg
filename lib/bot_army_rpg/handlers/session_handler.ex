@@ -1,4 +1,5 @@
 defmodule BotArmyRpg.Handlers.SessionHandler do
+  @moduledoc "Handles NATS messages for RPG session create, get, and update."
   require Logger
 
   defp session_store do

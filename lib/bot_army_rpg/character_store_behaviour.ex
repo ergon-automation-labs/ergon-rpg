@@ -1,4 +1,5 @@
 defmodule BotArmyRpg.CharacterStoreBehaviour do
+  @moduledoc "Behaviour contract for character storage implementations."
   @callback create(payload :: map()) :: {:ok, map()} | {:error, atom()}
   @callback get(tenant_id :: String.t(), character_id :: String.t()) ::
               {:ok, map()} | {:error, atom()}

@@ -1,4 +1,5 @@
 defmodule BotArmyRpg.CampaignStore do
+  @moduledoc "In-memory + Ecto store for TTRPG campaign metadata and state."
   use GenServer
   require Logger
   alias BotArmyRpg.Repo

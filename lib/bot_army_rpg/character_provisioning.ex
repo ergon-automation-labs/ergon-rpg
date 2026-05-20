@@ -90,8 +90,7 @@ defmodule BotArmyRpg.CharacterProvisioning do
       |> String.replace_prefix("bot_army_", "")
       |> String.replace("_", " ")
       |> String.split()
-      |> Enum.map(&String.capitalize/1)
-      |> Enum.join(" ")
+      |> Enum.map_join(" ", &String.capitalize/1)
 
     theme_name || soul_name || fallback
   end

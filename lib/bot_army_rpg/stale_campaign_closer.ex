@@ -65,7 +65,7 @@ defmodule BotArmyRpg.StaleCampaignCloser do
       campaign_id = campaign["id"]
       updated_at = campaign["updated_at"]
 
-      case is_stale?(updated_at, stale_days) do
+      case stale?(updated_at, stale_days) do
         true ->
           close_campaign(campaign_id)
 
@@ -75,9 +75,9 @@ defmodule BotArmyRpg.StaleCampaignCloser do
     end)
   end
 
-  defp is_stale?(updated_at, stale_days) when is_nil(updated_at), do: false
+  defp stale?(updated_at, stale_days) when is_nil(updated_at), do: false
 
-  defp is_stale?(updated_at, stale_days) do
+  defp stale?(updated_at, stale_days) do
     days_elapsed = DateTime.diff(DateTime.utc_now(), updated_at, :day)
     days_elapsed >= stale_days
   end

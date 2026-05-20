@@ -1,4 +1,5 @@
 defmodule BotArmyRpg.SessionStoreBehaviour do
+  @moduledoc "Behaviour contract for RPG session storage implementations."
   @callback create(payload :: map()) :: {:ok, map()} | {:error, atom()}
   @callback get(tenant_id :: String.t(), session_id :: String.t()) ::
               {:ok, map()} | {:error, atom()}

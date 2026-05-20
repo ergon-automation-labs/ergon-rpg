@@ -1,4 +1,5 @@
 defmodule BotArmyRpg.Handlers.SceneFactHandler do
+  @moduledoc "Handles NATS messages for adding, listing, and clearing scene facts."
   require Logger
 
   defp scene_fact_store do

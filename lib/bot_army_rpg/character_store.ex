@@ -1,4 +1,5 @@
 defmodule BotArmyRpg.CharacterStore do
+  @moduledoc "In-memory + Ecto store for bot/player character sheets and stats."
   use GenServer
   require Logger
 

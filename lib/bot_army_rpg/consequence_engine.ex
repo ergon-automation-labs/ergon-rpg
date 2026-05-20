@@ -387,19 +387,17 @@ defmodule BotArmyRpg.ConsequenceEngine do
 
   defp format_hints(hints) do
     hints
-    |> Enum.map(fn hint ->
+    |> Enum.map_join("\n\n", fn hint ->
       action = Map.get(hint, "action", "")
       why = Map.get(hint, "why", "")
 
       "**#{action}**\n> #{why}"
     end)
-    |> Enum.join("\n\n")
   end
 
   defp humanize_category(category) do
     category
     |> String.split("_")
-    |> Enum.map(&String.capitalize/1)
-    |> Enum.join(" ")
+    |> Enum.map_join(" ", &String.capitalize/1)
   end
 end

@@ -1,4 +1,5 @@
 defmodule BotArmyRpg.Handlers.CharacterHandler do
+  @moduledoc "Handles NATS messages for character create, get, and update."
   require Logger
 
   defp character_store do

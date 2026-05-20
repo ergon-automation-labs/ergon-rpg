@@ -55,7 +55,7 @@ defmodule BotArmyRpg.Handlers.ReconGateDemoTest do
 
     # Verify patterns are detected
     patterns = analysis["patterns"]
-    assert length(patterns) > 0
+    assert patterns != []
 
     # Should detect catastrophic_dominant (4 out of 6 is 66%)
     assert Enum.any?(patterns, fn p -> p["type"] == "catastrophic_dominant" end)
@@ -189,7 +189,7 @@ defmodule BotArmyRpg.Handlers.ReconGateDemoTest do
       end)
 
     # With 2 quests (50% failure), we shouldn't hit the thresholds
-    assert length(recon_blocking_patterns) == 0
+    assert recon_blocking_patterns == []
   end
 
   test "outcome_distribution tallies by success_band" do

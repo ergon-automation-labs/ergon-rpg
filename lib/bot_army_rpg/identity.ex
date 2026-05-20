@@ -1,4 +1,5 @@
 defmodule BotArmyRpg.Identity do
+  @moduledoc "Resolves user IDs from NATS messages using identity binding rules."
   @identity_keys ~w(surface client_id channel_id guild_id theme_id connection_id)
 
   def resolve_user_id(message, tenant_id) do

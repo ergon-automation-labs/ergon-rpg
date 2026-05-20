@@ -1,4 +1,5 @@
 defmodule BotArmyRpg.Handlers.RollHandler do
+  @moduledoc "Handles NATS requests for dice rolls and skill checks."
   require Logger
 
   @bridge_timeout_ms 2000

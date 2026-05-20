@@ -1,4 +1,5 @@
 defmodule BotArmyRpg.CampaignRosterStore do
+  @moduledoc "In-memory + Ecto store for campaign party rosters."
   use GenServer
   require Logger
   alias BotArmyRpg.Repo

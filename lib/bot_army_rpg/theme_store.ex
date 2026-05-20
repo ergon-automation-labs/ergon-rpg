@@ -1,4 +1,5 @@
 defmodule BotArmyRpg.ThemeStore do
+  @moduledoc "In-memory + Ecto store for campaign theme presets and vocabulary."
   use GenServer
   require Logger
 

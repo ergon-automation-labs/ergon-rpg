@@ -1,4 +1,5 @@
 defmodule BotArmyRpg.XpEventStore do
+  @moduledoc "In-memory + Ecto store for XP gain and progression events."
   use GenServer
   require Logger
   alias BotArmyRpg.Repo

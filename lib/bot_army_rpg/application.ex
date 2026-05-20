@@ -1,4 +1,5 @@
 defmodule BotArmyRpg.Application do
+  @moduledoc "OTP Application for the RPG bot. Manages campaign, character, and scene lifecycle."
   use Application
 
   @version Mix.Project.config()[:version]
