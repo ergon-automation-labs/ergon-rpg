@@ -16,7 +16,7 @@ config :bot_army_rpg, BotArmyRpg.Repo,
 
 test_nats_port = System.get_env("NATS_PORT", "4223") |> String.to_integer()
 
-config :bot_army_runtime, :nats,
+config :bot_army_library_runtime, :nats,
   servers: [{"localhost", test_nats_port}],
   ping_interval: 5000,
   max_reconnect_attempts: 3,

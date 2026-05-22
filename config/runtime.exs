@@ -1,6 +1,6 @@
 import Config
 
-config :bot_army_runtime, :auto_start_services, true
+config :bot_army_library_runtime, :auto_start_services, true
 
 nats_host = System.get_env("NATS_HOST", "localhost")
 
@@ -11,7 +11,7 @@ nats_port =
     String.to_integer(System.get_env("NATS_PORT", "4223"))
   end
 
-config :bot_army_runtime, :nats,
+config :bot_army_library_runtime, :nats,
   servers: [{nats_host, nats_port}],
   ping_interval: 5000,
   max_reconnect_attempts: 3,
@@ -34,9 +34,9 @@ config :bot_army_rpg, BotArmyRpg.Repo,
   pool_size: 3,
   ssl: false
 
-config :bot_army_learning, ecto_repos: [BotArmyLearning.Repo]
+config :bot_army_library_learning, ecto_repos: [BotArmyLearning.Repo]
 
-config :bot_army_learning, BotArmyLearning.Repo,
+config :bot_army_library_learning, BotArmyLearning.Repo,
   database:
     System.get_env("BOT_ARMY_RPG_DB_NAME") || System.get_env("DATABASE_NAME") || "ergon_rpg",
   hostname:
