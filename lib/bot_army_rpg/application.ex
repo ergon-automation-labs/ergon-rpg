@@ -42,7 +42,7 @@ defmodule BotArmyRpg.Application do
             {BotArmyRpg.PulsePublisher, []},
             {BotArmyRpg.DailyNarrator, []},
             {BotArmyRpg.ConsequenceEngine, []},
-            {BotArmyLearning.OutcomeTracker, []},
+            {BotArmyLearning.OutcomeTracker, [repo: BotArmyRpg.Repo]},
             {BotArmyRuntime.Health.Responder,
              [bot_name: :rpg, repo: BotArmyRpg.Repo, version: @version]}
           ]
