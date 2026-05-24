@@ -33,6 +33,9 @@ config :bot_army_library_learning, BotArmyLearning.Repo,
   password: "postgres",
   pool_size: 5
 
+# Logger metadata keys for domain-specific context
+config :logger, :default_formatter, metadata: [:timestamp, :level, :module, :function, :error]
+
 if File.exists?("config/#{Mix.env()}.exs") do
   import_config "#{Mix.env()}.exs"
 end
