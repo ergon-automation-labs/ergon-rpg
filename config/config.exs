@@ -16,21 +16,21 @@ end
 config :bot_army_rpg, ecto_repos: [BotArmyRpg.Repo]
 
 config :bot_army_rpg, BotArmyRpg.Repo,
-  database: "ergon_rpg",
-  hostname: "localhost",
-  port: 30003,
-  username: "postgres",
-  password: "postgres",
+  database: System.get_env("BOT_ARMY_RPG_DB_NAME", "rpg_dev"),
+  hostname: System.get_env("BOT_ARMY_RPG_DB_HOST", "localhost"),
+  port: String.to_integer(System.get_env("BOT_ARMY_RPG_DB_PORT", "5432")),
+  username: System.get_env("BOT_ARMY_RPG_DB_USER", "postgres"),
+  password: System.get_env("BOT_ARMY_RPG_DB_PASSWORD", "postgres"),
   pool_size: 10
 
 config :bot_army_library_learning, ecto_repos: [BotArmyLearning.Repo]
 
 config :bot_army_library_learning, BotArmyLearning.Repo,
-  database: "ergon_rpg",
-  hostname: "localhost",
-  port: 30003,
-  username: "postgres",
-  password: "postgres",
+  database: System.get_env("BOT_ARMY_RPG_DB_NAME", "rpg_dev"),
+  hostname: System.get_env("BOT_ARMY_RPG_DB_HOST", "localhost"),
+  port: String.to_integer(System.get_env("BOT_ARMY_RPG_DB_PORT", "5432")),
+  username: System.get_env("BOT_ARMY_RPG_DB_USER", "postgres"),
+  password: System.get_env("BOT_ARMY_RPG_DB_PASSWORD", "postgres"),
   pool_size: 5
 
 # Logger metadata keys for domain-specific context

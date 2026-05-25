@@ -1,6 +1,6 @@
 /_build/
 /deps/
-/*.tar.gz
+*.tar.gz
 
 # Ignore all .beam files anywhere
 *.beam
