@@ -9,6 +9,7 @@ defmodule BotArmyRpg.NATS.Consumer do
   require Logger
 
   @reconnect_delay_ms 5000
+  @registry_heartbeat_ms 20_000
   @version Mix.Project.config()[:version]
 
   @subjects [
@@ -271,6 +272,7 @@ defmodule BotArmyRpg.NATS.Consumer do
           |> Enum.filter(&(not is_nil(&1)))
 
         BotArmyRuntime.Registry.register("rpg", @subjects, @version)
+        Process.send_after(self(), :registry_heartbeat, @registry_heartbeat_ms)
 
         {:noreply, %{state | subscriptions: subscriptions, conn: conn}}
 
@@ -330,6 +332,7 @@ defmodule BotArmyRpg.NATS.Consumer do
   @impl true
   def handle_info(:registry_heartbeat, state) do
     BotArmyRuntime.Registry.register("rpg", @subjects, @version)
+    Process.send_after(self(), :registry_heartbeat, @registry_heartbeat_ms)
     {:noreply, state}
   end
 
