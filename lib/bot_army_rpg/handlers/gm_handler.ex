@@ -239,7 +239,8 @@ defmodule BotArmyRpg.Handlers.GMHandler do
         character_id,
         "rpg.action_resolution",
         "act",
-        outcome_result
+        outcome_result,
+        :rpg_outcome_tracker
       )
     rescue
       _ -> :ok
