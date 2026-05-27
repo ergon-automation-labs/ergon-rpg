@@ -1,5 +1,7 @@
 import Config
 
+config :bot_army_rpg, :deployment_status, "deployed"
+
 if File.exists?(".env") do
   File.stream!(".env")
   |> Stream.map(&String.trim_trailing/1)
