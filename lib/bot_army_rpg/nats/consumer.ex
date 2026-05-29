@@ -8,6 +8,26 @@ defmodule BotArmyRpg.NATS.Consumer do
   use GenServer
   require Logger
 
+  alias BotArmyRuntime.NATS.{Connection, Publisher, Reply}
+  alias BotArmyRuntime.Registry, as: BotArmyRegistry
+  alias BotArmyCore.NATS.Decoder
+
+  alias BotArmyRpg.Handlers.{
+    CharacterHandler,
+    CampaignHandler,
+    SessionHandler,
+    QuestHandler,
+    SceneFactHandler,
+    LootHandler,
+    RollHandler,
+    ThemeHandler,
+    GMHandler,
+    SessionContextHandler,
+    WorldSnapshotHandler,
+    IdentityHandler,
+    LoreHandler
+  }
+
   @reconnect_delay_ms 5000
   @registry_heartbeat_ms 20_000
   @version Mix.Project.config()[:version]
@@ -248,9 +268,9 @@ defmodule BotArmyRpg.NATS.Consumer do
 
   @impl true
   def handle_continue(:connect, state) do
-    case GenServer.call(BotArmyRuntime.NATS.Connection, :get_connection, 5000) do
+    case GenServer.call(Connection, :get_connection, 5000) do
       {:ok, conn} ->
-        BotArmyRuntime.NATS.Connection.subscribe_to_status()
+        Connection.subscribe_to_status()
         Logger.info("[RPG Consumer] Connected to NATS, subscribing to topics")
 
         subscriptions =
@@ -271,7 +291,7 @@ defmodule BotArmyRpg.NATS.Consumer do
           end)
           |> Enum.filter(&(not is_nil(&1)))
 
-        BotArmyRuntime.Registry.register("rpg", @subjects, @version)
+        BotArmyRegistry.register("rpg", @subjects, @version)
         Process.send_after(self(), :registry_heartbeat, @registry_heartbeat_ms)
 
         {:noreply, %{state | subscriptions: subscriptions, conn: conn}}
@@ -296,7 +316,7 @@ defmodule BotArmyRpg.NATS.Consumer do
       if msg.reply_to do
         handle_request_reply(msg, state)
       else
-        case BotArmyCore.NATS.Decoder.decode(msg.body) do
+        case Decoder.decode(msg.body) do
           {:ok, decoded_message} ->
             route_message(decoded_message, msg.topic)
 
@@ -331,7 +351,7 @@ defmodule BotArmyRpg.NATS.Consumer do
 
   @impl true
   def handle_info(:registry_heartbeat, state) do
-    BotArmyRuntime.Registry.register("rpg", @subjects, @version)
+    BotArmyRegistry.register("rpg", @subjects, @version)
     Process.send_after(self(), :registry_heartbeat, @registry_heartbeat_ms)
     {:noreply, state}
   end
@@ -342,151 +362,151 @@ defmodule BotArmyRpg.NATS.Consumer do
     result =
       case msg.topic do
         "rpg.identity.bind" ->
-          BotArmyRpg.Handlers.IdentityHandler.handle_bind(body)
+          IdentityHandler.handle_bind(body)
 
         "rpg.identity.resolve" ->
-          BotArmyRpg.Handlers.IdentityHandler.handle_resolve(body)
+          IdentityHandler.handle_resolve(body)
 
         "rpg.character.create" ->
-          BotArmyRpg.Handlers.CharacterHandler.handle_create(body)
+          CharacterHandler.handle_create(body)
 
         "rpg.character.get" ->
-          BotArmyRpg.Handlers.CharacterHandler.handle_get(body)
+          CharacterHandler.handle_get(body)
 
         "rpg.character.get_by_bot" ->
-          BotArmyRpg.Handlers.CharacterHandler.handle_get_by_bot(body)
+          CharacterHandler.handle_get_by_bot(body)
 
         "rpg.character.update" ->
-          BotArmyRpg.Handlers.CharacterHandler.handle_update(body)
+          CharacterHandler.handle_update(body)
 
         "rpg.character.list" ->
-          BotArmyRpg.Handlers.CharacterHandler.handle_list(body)
+          CharacterHandler.handle_list(body)
 
         "rpg.character.ensure" ->
-          BotArmyRpg.Handlers.CharacterHandler.handle_ensure(body)
+          CharacterHandler.handle_ensure(body)
 
         "rpg.campaign.start" ->
-          BotArmyRpg.Handlers.CampaignHandler.handle_start(body)
+          CampaignHandler.handle_start(body)
 
         "rpg.campaign.get" ->
-          BotArmyRpg.Handlers.CampaignHandler.handle_get(body)
+          CampaignHandler.handle_get(body)
 
         "rpg.campaign.close" ->
-          BotArmyRpg.Handlers.CampaignHandler.handle_close(body)
+          CampaignHandler.handle_close(body)
 
         "rpg.campaign.roster.get" ->
-          BotArmyRpg.Handlers.CampaignHandler.handle_roster_get(body)
+          CampaignHandler.handle_roster_get(body)
 
         "rpg.campaign.roster.update" ->
-          BotArmyRpg.Handlers.CampaignHandler.handle_roster_update(body)
+          CampaignHandler.handle_roster_update(body)
 
         "rpg.campaign.xp.add" ->
-          BotArmyRpg.Handlers.CampaignHandler.handle_xp_add(body)
+          CampaignHandler.handle_xp_add(body)
 
         "rpg.campaign.xp.ledger" ->
-          BotArmyRpg.Handlers.CampaignHandler.handle_xp_ledger(body)
+          CampaignHandler.handle_xp_ledger(body)
 
         "rpg.character.award_xp" ->
-          BotArmyRpg.Handlers.CharacterHandler.handle_award_xp(body)
+          CharacterHandler.handle_award_xp(body)
 
         "rpg.character.equip" ->
-          BotArmyRpg.Handlers.CharacterHandler.handle_equip(body)
+          CharacterHandler.handle_equip(body)
 
         "rpg.character.unequip" ->
-          BotArmyRpg.Handlers.CharacterHandler.handle_unequip(body)
+          CharacterHandler.handle_unequip(body)
 
         "rpg.loot.generate" ->
-          BotArmyRpg.Handlers.LootHandler.handle_generate(body)
+          LootHandler.handle_generate(body)
 
         "rpg.roll.dice" ->
-          BotArmyRpg.Handlers.RollHandler.handle_roll(body)
+          RollHandler.handle_roll(body)
 
         "rpg.session.start" ->
-          BotArmyRpg.Handlers.SessionHandler.handle_start(body)
+          SessionHandler.handle_start(body)
 
         "rpg.session.resume" ->
-          BotArmyRpg.Handlers.SessionHandler.handle_resume(body)
+          SessionHandler.handle_resume(body)
 
         "rpg.session.join" ->
-          BotArmyRpg.Handlers.SessionHandler.handle_join(body)
+          SessionHandler.handle_join(body)
 
         "rpg.session.leave" ->
-          BotArmyRpg.Handlers.SessionHandler.handle_leave(body)
+          SessionHandler.handle_leave(body)
 
         "rpg.session.pause" ->
-          BotArmyRpg.Handlers.SessionHandler.handle_pause(body)
+          SessionHandler.handle_pause(body)
 
         "rpg.session.end" ->
-          BotArmyRpg.Handlers.SessionHandler.handle_end(body)
+          SessionHandler.handle_end(body)
 
         "rpg.session.describe" ->
-          BotArmyRpg.Handlers.SessionHandler.handle_describe(body)
+          SessionHandler.handle_describe(body)
 
         "rpg.session.state" ->
-          BotArmyRpg.Handlers.SessionHandler.handle_state(body)
+          SessionHandler.handle_state(body)
 
         "rpg.session.list" ->
-          BotArmyRpg.Handlers.SessionHandler.handle_list(body)
+          SessionHandler.handle_list(body)
 
         "rpg.session.gather_context" ->
-          BotArmyRpg.Handlers.SessionContextHandler.handle_gather_context(body)
+          SessionContextHandler.handle_gather_context(body)
 
         "rpg.adventure.context.query" ->
-          BotArmyRpg.Handlers.SessionContextHandler.handle_adventure_context(body)
+          SessionContextHandler.handle_adventure_context(body)
 
         "rpg.scene.fact.add" ->
-          BotArmyRpg.Handlers.SceneFactHandler.handle_add(body)
+          SceneFactHandler.handle_add(body)
 
         "rpg.scene.fact.list" ->
-          BotArmyRpg.Handlers.SceneFactHandler.handle_list(body)
+          SceneFactHandler.handle_list(body)
 
         "rpg.theme.get" ->
-          BotArmyRpg.Handlers.ThemeHandler.handle_get(body)
+          ThemeHandler.handle_get(body)
 
         "rpg.theme.change" ->
-          BotArmyRpg.Handlers.ThemeHandler.handle_change(body)
+          ThemeHandler.handle_change(body)
 
         "rpg.theme.list" ->
-          BotArmyRpg.Handlers.ThemeHandler.handle_list(body)
+          ThemeHandler.handle_list(body)
 
         "rpg.theme.presets.list" ->
-          BotArmyRpg.Handlers.ThemeHandler.handle_presets_list(body)
+          ThemeHandler.handle_presets_list(body)
 
         "rpg.lore.snapshot" ->
-          BotArmyRpg.Handlers.LoreHandler.handle_snapshot(body)
+          LoreHandler.handle_snapshot(body)
 
         "rpg.lore.ingest" ->
-          BotArmyRpg.Handlers.LoreHandler.handle_ingest(body)
+          LoreHandler.handle_ingest(body)
 
         "rpg.world.snapshot" ->
-          BotArmyRpg.Handlers.WorldSnapshotHandler.handle_snapshot(body)
+          WorldSnapshotHandler.handle_snapshot(body)
 
         "rpg.turn.start_round" ->
-          BotArmyRpg.Handlers.GMHandler.handle_turn_start_round(body)
+          GMHandler.handle_turn_start_round(body)
 
         "rpg.turn.next" ->
-          BotArmyRpg.Handlers.GMHandler.handle_turn_next(body)
+          GMHandler.handle_turn_next(body)
 
         "rpg.turn.whose" ->
-          BotArmyRpg.Handlers.GMHandler.handle_turn_whose(body)
+          GMHandler.handle_turn_whose(body)
 
         "rpg.action.declare" ->
-          BotArmyRpg.Handlers.GMHandler.handle_action_declare(body)
+          GMHandler.handle_action_declare(body)
 
         "rpg.action.resolve" ->
-          BotArmyRpg.Handlers.GMHandler.handle_action_resolve(body)
+          GMHandler.handle_action_resolve(body)
 
         "rpg.scene.narrate" ->
-          BotArmyRpg.Handlers.GMHandler.handle_scene_narrate(body)
+          GMHandler.handle_scene_narrate(body)
 
         "rpg.quest.create" ->
-          BotArmyRpg.Handlers.QuestHandler.handle_create(body)
+          QuestHandler.handle_create(body)
 
         "rpg.quest.list" ->
-          BotArmyRpg.Handlers.QuestHandler.handle_list(body)
+          QuestHandler.handle_list(body)
 
         "rpg.quest.complete" ->
-          BotArmyRpg.Handlers.QuestHandler.handle_complete(body)
+          QuestHandler.handle_complete(body)
 
         _ ->
           {:error, :unknown_subject}
@@ -494,8 +514,8 @@ defmodule BotArmyRpg.NATS.Consumer do
 
     reply =
       case result do
-        {:ok, data} -> BotArmyRuntime.NATS.Reply.ok(data)
-        {:error, reason} -> BotArmyRuntime.NATS.Reply.error(inspect(reason), :request_failed)
+        {:ok, data} -> Reply.ok(data)
+        {:error, reason} -> Reply.error(inspect(reason), :request_failed)
       end
 
     if state.conn do

@@ -14,6 +14,9 @@ defmodule BotArmyRpg.ConsequenceEngine do
   use GenServer
   require Logger
 
+  alias BotArmyRuntime.NATS.{Connection, Publisher}
+  alias BotArmyCore.NATS.Decoder
+
   @reconnect_delay_ms 5_000
 
   @category_to_skill %{
@@ -36,9 +39,9 @@ defmodule BotArmyRpg.ConsequenceEngine do
 
   @impl true
   def handle_continue(:connect, state) do
-    case GenServer.call(BotArmyRuntime.NATS.Connection, :get_connection, 5_000) do
+    case GenServer.call(Connection, :get_connection, 5_000) do
       {:ok, conn} ->
-        BotArmyRuntime.NATS.Connection.subscribe_to_status()
+        Connection.subscribe_to_status()
 
         Logger.info(
           "[ConsequenceEngine] Connected to NATS, subscribing to quest completion events"
@@ -80,7 +83,7 @@ defmodule BotArmyRpg.ConsequenceEngine do
   def handle_info({:msg, msg}, state) do
     Logger.debug("[ConsequenceEngine] Received event on #{msg.topic}")
 
-    with {:ok, decoded} <- BotArmyCore.NATS.Decoder.decode(msg.body),
+    with {:ok, decoded} <- Decoder.decode(msg.body),
          category when is_binary(category) <- Map.get(decoded, "source_category"),
          tenant_id when is_binary(tenant_id) <- Map.get(decoded, "tenant_id") do
       # Check for single-quest failure (training suggestion)
@@ -153,7 +156,7 @@ defmodule BotArmyRpg.ConsequenceEngine do
 
     Logger.debug("[ConsequenceEngine] Creating training task: #{title}")
 
-    case BotArmyRuntime.NATS.Publisher.request("bridge.task.create", payload, timeout_ms: 5000) do
+    case Publisher.request("bridge.task.create", payload, timeout_ms: 5000) do
       {:ok, %{"data" => task}} -> {:ok, task}
       {:ok, response} -> {:ok, response}
       error -> error
@@ -174,7 +177,7 @@ defmodule BotArmyRpg.ConsequenceEngine do
 
         Logger.debug("[ConsequenceEngine] Triggering skill: #{skill_slug}")
 
-        case BotArmyRuntime.NATS.Publisher.publish(
+        case Publisher.publish(
                "bot.army.skills.command.#{skill_slug}",
                payload
              ) do
@@ -195,7 +198,7 @@ defmodule BotArmyRpg.ConsequenceEngine do
       "triggered_at" => DateTime.utc_now() |> DateTime.to_iso8601()
     }
 
-    case BotArmyRuntime.NATS.Publisher.publish("rpg.consequence.triggered", event) do
+    case Publisher.publish("rpg.consequence.triggered", event) do
       :ok -> :ok
       error -> error
     end
@@ -243,7 +246,7 @@ defmodule BotArmyRpg.ConsequenceEngine do
       "tenant_id" => tenant_id
     }
 
-    case BotArmyRuntime.NATS.Publisher.request("bridge.task.list", payload, timeout_ms: 3000) do
+    case Publisher.request("bridge.task.list", payload, timeout_ms: 3000) do
       {:ok, %{"data" => tasks}} when is_list(tasks) and tasks != [] ->
         {:ok, List.first(tasks)}
 
@@ -283,7 +286,7 @@ defmodule BotArmyRpg.ConsequenceEngine do
 
     Logger.info("[ConsequenceEngine] Creating recon task for category: #{category}")
 
-    case BotArmyRuntime.NATS.Publisher.request("bridge.task.create", payload, timeout_ms: 5000) do
+    case Publisher.request("bridge.task.create", payload, timeout_ms: 5000) do
       {:ok, %{"data" => task}} ->
         emit_recon_consequence_event(category, tenant_id, user_id, task, failure_analysis)
 
@@ -307,7 +310,7 @@ defmodule BotArmyRpg.ConsequenceEngine do
       "triggered_at" => DateTime.utc_now() |> DateTime.to_iso8601()
     }
 
-    case BotArmyRuntime.NATS.Publisher.publish("rpg.consequence.triggered", event) do
+    case Publisher.publish("rpg.consequence.triggered", event) do
       :ok ->
         Logger.info("[ConsequenceEngine] Recon requirement triggered for category: #{category}")
         :ok
