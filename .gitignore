@@ -10,3 +10,4 @@ deps/*/_build/
 
 # Ignore Mix compile cache files anywhere
 *.mix/compile.*
+erl_crash.dump
