@@ -38,8 +38,7 @@ config :bot_army_library_learning, BotArmyLearning.Repo,
 # Logger metadata keys for domain-specific context
 config :logger,
   level: :info,
-  backends: [:console],
-  default_formatter: {BotArmyRuntime.LoggerFormatter, []}
+  backends: [:console]
 
 config :logger, :console,
   format: {BotArmyRuntime.LoggerFormatter, []},
