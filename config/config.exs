@@ -36,8 +36,11 @@ config :bot_army_library_learning, BotArmyLearning.Repo,
   pool_size: 5
 
 # Logger metadata keys for domain-specific context
-config :logger, :default_formatter, metadata: [:timestamp, :level, :module, :function, :error]
+config :logger,
+  level: :info,
+  backends: [:console],
+  default_formatter: {BotArmyRuntime.LoggerFormatter, []}
 
-if File.exists?("config/#{Mix.env()}.exs") do
-  import_config "#{Mix.env()}.exs"
-end
+config :logger, :console,
+  format: {BotArmyRuntime.LoggerFormatter, []},
+  metadata: [:correlation_id]
