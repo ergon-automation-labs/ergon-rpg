@@ -31,7 +31,9 @@ config :bot_army_rpg, BotArmyRpg.Repo,
   password:
     System.get_env("BOT_ARMY_RPG_DB_PASSWORD") || System.get_env("DATABASE_PASSWORD") ||
       "postgres",
-  pool_size: 20,
+  pool_size: System.get_env("BOT_POOL_SIZE", "10") |> String.to_integer(),
+
+
   ssl: false
 
 config :bot_army_library_learning, ecto_repos: [BotArmyLearning.Repo]
@@ -50,7 +52,9 @@ config :bot_army_library_learning, BotArmyLearning.Repo,
   password:
     System.get_env("BOT_ARMY_RPG_DB_PASSWORD") || System.get_env("DATABASE_PASSWORD") ||
       "postgres",
-  pool_size: 20,
+  pool_size: System.get_env("BOT_POOL_SIZE", "10") |> String.to_integer(),
+
+
   ssl: false
 
 config :bot_army_rpg,
