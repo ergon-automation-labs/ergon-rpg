@@ -13,7 +13,7 @@ defmodule RpgBot.Release do
 
   def migrate do
     BotArmyRuntime.Ecto.MigrationRunner.run(
-      repo_module: RpgBot.Repo,
+      repo_module: BotArmyRpg.Repo,
       app_module: @app
     )
   end

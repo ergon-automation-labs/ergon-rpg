@@ -5,6 +5,16 @@ defmodule BotArmyRpg.Handlers.SceneFactHandlerTest do
 
   setup :verify_on_exit!
 
+  setup do
+    Application.put_env(:bot_army_rpg, :scene_fact_store, BotArmyRpg.SceneFactStoreMock)
+
+    on_exit(fn ->
+      Application.delete_env(:bot_army_rpg, :scene_fact_store)
+    end)
+
+    :ok
+  end
+
   describe "handle_add/1" do
     test "appends a scene fact" do
       session_id = Ecto.UUID.generate()
