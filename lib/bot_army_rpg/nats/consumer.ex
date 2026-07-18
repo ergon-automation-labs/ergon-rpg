@@ -8,9 +8,9 @@ defmodule BotArmyRpg.NATS.Consumer do
   use GenServer
   require Logger
 
-  alias BotArmyRuntime.NATS.{Connection, Publisher, Reply}
-  alias BotArmyRuntime.Registry, as: BotArmyRegistry
-  alias BotArmyCore.NATS.Decoder
+  alias BotArmyLibraryRuntime.NATS.{Connection, Publisher, Reply}
+  alias BotArmyLibraryRuntime.Registry, as: BotArmyRegistry
+  alias BotArmyLibraryCore.NATS.Decoder
 
   alias BotArmyRpg.Handlers.{
     CharacterHandler,
@@ -310,7 +310,7 @@ defmodule BotArmyRpg.NATS.Consumer do
 
   @impl true
   def handle_info({:msg, msg}, state) do
-    BotArmyRuntime.Tracing.with_consumer_span(msg.topic, Map.get(msg, :headers), fn ->
+    BotArmyLibraryRuntime.Tracing.with_consumer_span(msg.topic, Map.get(msg, :headers), fn ->
       Logger.debug("[RPG Consumer] Received message on #{msg.topic}")
 
       if msg.reply_to do

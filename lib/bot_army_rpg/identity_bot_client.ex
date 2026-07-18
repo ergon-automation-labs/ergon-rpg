@@ -83,6 +83,6 @@ defmodule BotArmyRpg.IdentityBotClient do
   defp maybe_put(map, key, value), do: Map.put(map, key, value)
 
   defp publisher do
-    Application.get_env(:bot_army_rpg, :nats_publisher, BotArmyRuntime.NATS.Publisher)
+    Application.get_env(:bot_army_rpg, :nats_publisher, BotArmyLibraryRuntime.NATS.Publisher)
   end
 end

@@ -30,7 +30,7 @@ defmodule BotArmyRpg.ProjectSubscriber do
 
     case get_nats_connection() do
       {:ok, conn} ->
-        BotArmyRuntime.NATS.Connection.subscribe_to_status()
+        BotArmyLibraryRuntime.NATS.Connection.subscribe_to_status()
 
         Logger.info(
           "[ProjectSubscriber] Connected to NATS, subscribing to project creation events"
@@ -68,7 +68,7 @@ defmodule BotArmyRpg.ProjectSubscriber do
 
   defp get_nats_connection do
     try do
-      case GenServer.call(BotArmyRuntime.NATS.Connection, :get_connection, 5_000) do
+      case GenServer.call(BotArmyLibraryRuntime.NATS.Connection, :get_connection, 5_000) do
         {:ok, conn} -> {:ok, conn}
         {:error, reason} -> {:error, reason}
       end
@@ -96,9 +96,9 @@ defmodule BotArmyRpg.ProjectSubscriber do
   def handle_info({:msg, msg}, state) do
     Logger.debug("[ProjectSubscriber] Received on #{msg.topic}")
 
-    case BotArmyCore.NATS.Decoder.decode(msg.body) do
+    case BotArmyLibraryCore.NATS.Decoder.decode(msg.body) do
       {:ok, decoded} ->
-        tenant_id = Map.get(decoded, "tenant_id") || BotArmyRuntime.Tenant.default_tenant_id()
+        tenant_id = Map.get(decoded, "tenant_id") || BotArmyLibraryRuntime.Tenant.default_tenant_id()
         handle_project_created(tenant_id, decoded)
 
       {:error, reason} ->

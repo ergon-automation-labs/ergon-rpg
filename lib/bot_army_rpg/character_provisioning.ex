@@ -9,7 +9,7 @@ defmodule BotArmyRpg.CharacterProvisioning do
 
   require Logger
 
-  alias BotArmyRuntime.Personality.ThemeConfig
+  alias BotArmyLibraryRuntime.Personality.ThemeConfig
 
   @doc """
   Ensure a bot has an RPG character. Creates one if missing.
@@ -19,7 +19,7 @@ defmodule BotArmyRpg.CharacterProvisioning do
   @spec ensure_bot_character(String.t() | atom(), String.t() | nil) ::
           {:ok, map()} | {:error, atom()}
   def ensure_bot_character(bot_id, tenant_id \\ nil) do
-    tenant_id = tenant_id || BotArmyRuntime.Tenant.default_tenant_id()
+    tenant_id = tenant_id || BotArmyLibraryRuntime.Tenant.default_tenant_id()
     bot_id_str = normalize_bot_id(bot_id)
 
     store = Application.get_env(:bot_army_rpg, :character_store, BotArmyRpg.CharacterStore)
@@ -41,7 +41,7 @@ defmodule BotArmyRpg.CharacterProvisioning do
   """
   @spec get_bot_character(String.t() | atom(), String.t() | nil) :: map() | nil
   def get_bot_character(bot_id, tenant_id \\ nil) do
-    tenant_id = tenant_id || BotArmyRuntime.Tenant.default_tenant_id()
+    tenant_id = tenant_id || BotArmyLibraryRuntime.Tenant.default_tenant_id()
     bot_id_str = normalize_bot_id(bot_id)
 
     store = Application.get_env(:bot_army_rpg, :character_store, BotArmyRpg.CharacterStore)

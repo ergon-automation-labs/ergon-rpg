@@ -23,7 +23,7 @@ defmodule BotArmyRpg.Handlers.QuestHandler do
 
     tenant_id =
       params["tenant_id"] || message["tenant_id"] ||
-        BotArmyRuntime.Tenant.default_tenant_id()
+        BotArmyLibraryRuntime.Tenant.default_tenant_id()
 
     user_id = BotArmyRpg.Identity.resolve_user_id(message, tenant_id)
     gtd_task = Map.get(params, "gtd_task", %{})
@@ -79,7 +79,7 @@ defmodule BotArmyRpg.Handlers.QuestHandler do
 
     tenant_id =
       params["tenant_id"] || message["tenant_id"] ||
-        BotArmyRuntime.Tenant.default_tenant_id()
+        BotArmyLibraryRuntime.Tenant.default_tenant_id()
 
     user_id = BotArmyRpg.Identity.resolve_user_id(message, tenant_id)
 
@@ -109,7 +109,7 @@ defmodule BotArmyRpg.Handlers.QuestHandler do
 
     tenant_id =
       params["tenant_id"] || message["tenant_id"] ||
-        BotArmyRuntime.Tenant.default_tenant_id()
+        BotArmyLibraryRuntime.Tenant.default_tenant_id()
 
     user_id = BotArmyRpg.Identity.resolve_user_id(message, tenant_id)
     quest_id = params["quest_id"]
@@ -180,7 +180,7 @@ defmodule BotArmyRpg.Handlers.QuestHandler do
       "tenant_id" => tenant_id
     }
 
-    case BotArmyRuntime.NATS.Publisher.request("bridge.task.list", payload, timeout_ms: 3000) do
+    case BotArmyLibraryRuntime.NATS.Publisher.request("bridge.task.list", payload, timeout_ms: 3000) do
       {:ok, %{"data" => tasks}} when is_list(tasks) and tasks != [] ->
         task = List.first(tasks)
         {:error, {:recon_required, Map.get(task, "id")}}

@@ -32,9 +32,9 @@ defmodule BotArmyRpg.ProgressionSubscriber do
 
   @impl true
   def handle_continue(:connect, state) do
-    case GenServer.call(BotArmyRuntime.NATS.Connection, :get_connection, 5_000) do
+    case GenServer.call(BotArmyLibraryRuntime.NATS.Connection, :get_connection, 5_000) do
       {:ok, conn} ->
-        BotArmyRuntime.NATS.Connection.subscribe_to_status()
+        BotArmyLibraryRuntime.NATS.Connection.subscribe_to_status()
 
         Logger.info(
           "[ProgressionSubscriber] Connected to NATS, subscribing to progression events"
@@ -76,9 +76,9 @@ defmodule BotArmyRpg.ProgressionSubscriber do
   def handle_info({:msg, msg}, state) do
     Logger.debug("[ProgressionSubscriber] Received on #{msg.topic}")
 
-    case BotArmyCore.NATS.Decoder.decode(msg.body) do
+    case BotArmyLibraryCore.NATS.Decoder.decode(msg.body) do
       {:ok, decoded} ->
-        tenant_id = Map.get(decoded, "tenant_id") || BotArmyRuntime.Tenant.default_tenant_id()
+        tenant_id = Map.get(decoded, "tenant_id") || BotArmyLibraryRuntime.Tenant.default_tenant_id()
 
         case msg.topic do
           "events.gtd.task.created" ->

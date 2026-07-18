@@ -39,7 +39,7 @@ defmodule BotArmyRpg.SceneFactStore do
   @impl true
   def handle_call({:append, payload}, _from, state) do
     fact_id = Ecto.UUID.generate()
-    tenant_id = payload["tenant_id"] || BotArmyRuntime.Tenant.default_tenant_id()
+    tenant_id = payload["tenant_id"] || BotArmyLibraryRuntime.Tenant.default_tenant_id()
     user_id = Map.get(payload, "user_id")
 
     changeset =

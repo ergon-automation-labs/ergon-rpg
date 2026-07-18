@@ -14,8 +14,8 @@ defmodule BotArmyRpg.ConsequenceEngine do
   use GenServer
   require Logger
 
-  alias BotArmyRuntime.NATS.{Connection, Publisher}
-  alias BotArmyCore.NATS.Decoder
+  alias BotArmyLibraryRuntime.NATS.{Connection, Publisher}
+  alias BotArmyLibraryCore.NATS.Decoder
 
   @reconnect_delay_ms 5_000
 

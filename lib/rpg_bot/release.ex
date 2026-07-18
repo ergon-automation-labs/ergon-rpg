@@ -2,7 +2,7 @@ defmodule RpgBot.Release do
   @moduledoc """
   Release tasks for the RPG bot.
 
-  Migrations are run via the shared BotArmyRuntime.Ecto.MigrationRunner:
+  Migrations are run via the shared BotArmyLibraryRuntime.Ecto.MigrationRunner:
 
       /path/to/rpg_bot/bin/rpg_bot eval 'RpgBot.Release.migrate()'
 
@@ -12,7 +12,7 @@ defmodule RpgBot.Release do
   @app :bot_army_rpg
 
   def migrate do
-    BotArmyRuntime.Ecto.MigrationRunner.run(
+    BotArmyLibraryRuntime.Ecto.MigrationRunner.run(
       repo_module: BotArmyRpg.Repo,
       app_module: @app
     )

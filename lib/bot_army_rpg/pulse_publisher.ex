@@ -26,7 +26,7 @@ defmodule BotArmyRpg.PulsePublisher do
 
   @impl true
   def handle_info(:publish_health, state) do
-    BotArmyRuntime.SynapseHealth.publish(
+    BotArmyLibraryRuntime.SynapseHealth.publish(
       source: "bot_army_rpg",
       service: @service_name,
       health_signal: health_signal()
@@ -53,7 +53,7 @@ defmodule BotArmyRpg.PulsePublisher do
       metrics: %{}
     }
 
-    case BotArmyRuntime.NATS.Publisher.publish("bot.#{@service_name}.pulse", pulse) do
+    case BotArmyLibraryRuntime.NATS.Publisher.publish("bot.#{@service_name}.pulse", pulse) do
       {:ok, _} ->
         Logger.debug("[PulsePublisher] Published pulse: #{signal}")
 

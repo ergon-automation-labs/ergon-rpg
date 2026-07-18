@@ -3,7 +3,7 @@ defmodule BotArmyRpg.NATS.Publisher do
   NATS event publisher for the RPG bot.
 
   Derives the NATS subject from the event type and publishes
-  via BotArmyRuntime.NATS.Publisher.
+  via BotArmyLibraryRuntime.NATS.Publisher.
   """
 
   require Logger
@@ -12,7 +12,7 @@ defmodule BotArmyRpg.NATS.Publisher do
     subject = derive_subject(event_name)
     event = BotArmyRpg.EventBuilder.build_event(event_name, payload, opts)
 
-    case BotArmyRuntime.NATS.Publisher.publish(subject, event) do
+    case BotArmyLibraryRuntime.NATS.Publisher.publish(subject, event) do
       {:ok, _} ->
         Logger.debug("[RPG Publisher] Published #{event_name} to #{subject}")
         :ok

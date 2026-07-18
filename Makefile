@@ -3,7 +3,7 @@ VERSION ?= $(shell grep 'version:' mix.exs | head -1 | sed 's/.*"\([^"]*\)".*/\1
 SCRIPTS_DIRECTORY ?= $(abspath $(CURDIR)/../scripts)
 MIX ?= /Users/abby/.local/share/mise/shims/mix
 
-.PHONY: setup help deps test credo dialyzer coverage check format clean release publish-release setup-hooks setup-db reset-db logs push-and-publish rpg-theme-cyberpunk rpg-session-start rpg-start-round rpg-next-turn rpg-spectate-help
+.PHONY: setup help deps test credo dialyzer coverage check format clean release publish-release setup-hooks setup-db reset-db logs push-and-publish rpg-theme-cyberpunk rpg-session-start rpg-start-round rpg-next-turn rpg-spectate-help bump-version
 
 help:
 	@echo "RPG Bot"
@@ -71,8 +71,20 @@ reset-db:
 init:
 	@if [ ! -d .git ]; then git init; echo "Git initialized."; else echo "Git already initialized."; fi
 
+compile:
+	@LOG_FILE="/tmp/compile-rpg-$$(date +%s).log"; \
+	echo "Compiling rpg and logging to $$LOG_FILE..."; \
+	$(MIX) compile 2>&1 | tee "$$LOG_FILE"; \
+	echo "✓ Compilation log: $$LOG_FILE"
+
 deps:
 	$(MIX_BIN) deps.get
+
+compile:
+	@LOG_FILE="/tmp/compile-rpg-$$(date +%s).log"; \
+	echo "Compiling rpg and logging to $$LOG_FILE..."; \
+	$(MIX) compile 2>&1 | tee "$$LOG_FILE"; \
+	echo "✓ Compilation log: $$LOG_FILE"
 
 test:
 	$(MIX_BIN) test
@@ -171,3 +183,9 @@ rpg-spectate-help:
 
 logs:
 	@$(SCRIPTS_DIRECTORY)/tail_bot_log.sh
+bump-version:
+	@if [ -z "$(BUMP)" ]; then echo "Usage: make bump-version BUMP=major|minor|patch"; exit 1; fi
+	@OLD=$$(grep 'version:' mix.exs | head -1 | sed -E 's/.*version: "([^"]+)".*/\1/'); \
+	bash $(SCRIPTS_DIRECTORY)/bump_version.sh mix.exs $(BUMP) > /dev/null; \
+	NEW=$$(grep 'version:' mix.exs | head -1 | sed -E 's/.*version: "([^"]+)".*/\1/'); \
+	echo "✓ Bumped: $$OLD → $$NEW"

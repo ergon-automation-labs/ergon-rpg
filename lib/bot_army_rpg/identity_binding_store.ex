@@ -101,7 +101,7 @@ defmodule BotArmyRpg.IdentityBindingStore do
         case Jason.decode(json) do
           {:ok, bindings} when is_list(bindings) ->
             Enum.reduce(bindings, %{}, fn entry, acc ->
-              tenant_id = Map.get(entry, "tenant_id") || BotArmyRuntime.Tenant.default_tenant_id()
+              tenant_id = Map.get(entry, "tenant_id") || BotArmyLibraryRuntime.Tenant.default_tenant_id()
               user_id = Map.get(entry, "user_id")
 
               if is_binary(user_id) do

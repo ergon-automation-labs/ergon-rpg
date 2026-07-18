@@ -14,7 +14,7 @@ defmodule BotArmyRpg.Handlers.PartyHandler do
   alias BotArmyRpg.PartyStore
 
   def handle_get(message) do
-    tenant_id = Map.get(message, "tenant_id") || BotArmyRuntime.Tenant.default_tenant_id()
+    tenant_id = Map.get(message, "tenant_id") || BotArmyLibraryRuntime.Tenant.default_tenant_id()
     user_id = Map.get(message, "user_id")
 
     if user_id do
@@ -37,7 +37,7 @@ defmodule BotArmyRpg.Handlers.PartyHandler do
   end
 
   def handle_add(message) do
-    tenant_id = Map.get(message, "tenant_id") || BotArmyRuntime.Tenant.default_tenant_id()
+    tenant_id = Map.get(message, "tenant_id") || BotArmyLibraryRuntime.Tenant.default_tenant_id()
     user_id = Map.get(message, "user_id")
     bot_id = Map.get(message, "bot_id")
 
@@ -72,7 +72,7 @@ defmodule BotArmyRpg.Handlers.PartyHandler do
   end
 
   def handle_remove(message) do
-    tenant_id = Map.get(message, "tenant_id") || BotArmyRuntime.Tenant.default_tenant_id()
+    tenant_id = Map.get(message, "tenant_id") || BotArmyLibraryRuntime.Tenant.default_tenant_id()
     user_id = Map.get(message, "user_id")
     character_id = Map.get(message, "character_id")
 
@@ -84,7 +84,7 @@ defmodule BotArmyRpg.Handlers.PartyHandler do
   end
 
   def handle_auto_populate(message) do
-    tenant_id = Map.get(message, "tenant_id") || BotArmyRuntime.Tenant.default_tenant_id()
+    tenant_id = Map.get(message, "tenant_id") || BotArmyLibraryRuntime.Tenant.default_tenant_id()
     user_id = Map.get(message, "user_id")
 
     if user_id do

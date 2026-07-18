@@ -235,7 +235,7 @@ defmodule BotArmyRpg.Handlers.GMHandler do
       # Map RPG outcomes to OutcomeTracker's expected values
       outcome_result = if outcome in ["success", "critical"], do: "success", else: "failure"
 
-      BotArmyLearning.OutcomeTracker.record(
+      BotArmyLibraryLearning.OutcomeTracker.record(
         character_id,
         "rpg.action_resolution",
         "act",
@@ -377,7 +377,7 @@ defmodule BotArmyRpg.Handlers.GMHandler do
   end
 
   defp resolve_tenant_id(params, message) do
-    params["tenant_id"] || message["tenant_id"] || BotArmyRuntime.Tenant.default_tenant_id()
+    params["tenant_id"] || message["tenant_id"] || BotArmyLibraryRuntime.Tenant.default_tenant_id()
   end
 
   defp require_session_active(%{"status" => "active"}), do: :ok

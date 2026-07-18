@@ -34,9 +34,9 @@ defmodule BotArmyRpg.LoreSubscriber do
 
   @impl true
   def handle_continue(:connect, state) do
-    case GenServer.call(BotArmyRuntime.NATS.Connection, :get_connection, 5_000) do
+    case GenServer.call(BotArmyLibraryRuntime.NATS.Connection, :get_connection, 5_000) do
       {:ok, conn} ->
-        BotArmyRuntime.NATS.Connection.subscribe_to_status()
+        BotArmyLibraryRuntime.NATS.Connection.subscribe_to_status()
         Logger.info("[LoreSubscriber] Connected to NATS, subscribing to allowlisted subjects")
 
         subscriptions =
@@ -75,8 +75,8 @@ defmodule BotArmyRpg.LoreSubscriber do
   def handle_info({:msg, msg}, state) do
     Logger.debug("[LoreSubscriber] Received on #{msg.topic}")
 
-    with {:ok, decoded} <- BotArmyCore.NATS.Decoder.decode(msg.body),
-         tenant_id <- Map.get(decoded, "tenant_id") || BotArmyRuntime.Tenant.default_tenant_id(),
+    with {:ok, decoded} <- BotArmyLibraryCore.NATS.Decoder.decode(msg.body),
+         tenant_id <- Map.get(decoded, "tenant_id") || BotArmyLibraryRuntime.Tenant.default_tenant_id(),
          {:ok, payload} <- event_to_lore_payload(msg.topic, decoded) do
       case LoreKeeper.ingest(tenant_id, payload) do
         {:ok, _} -> :ok

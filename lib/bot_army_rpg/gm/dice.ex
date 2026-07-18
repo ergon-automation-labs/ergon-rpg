@@ -39,6 +39,6 @@ defmodule BotArmyRpg.GM.Dice do
   end
 
   defp publisher do
-    Application.get_env(:bot_army_rpg, :nats_publisher, BotArmyRuntime.NATS.Publisher)
+    Application.get_env(:bot_army_rpg, :nats_publisher, BotArmyLibraryRuntime.NATS.Publisher)
   end
 end

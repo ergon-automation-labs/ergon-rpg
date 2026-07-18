@@ -11,7 +11,7 @@ defmodule BotArmyRpg.Handlers.CharacterHandler do
 
     tenant_id =
       params["tenant_id"] || message["tenant_id"] ||
-        BotArmyRuntime.Tenant.default_tenant_id()
+        BotArmyLibraryRuntime.Tenant.default_tenant_id()
 
     user_id = BotArmyRpg.Identity.resolve_user_id(message, tenant_id)
 
@@ -41,7 +41,7 @@ defmodule BotArmyRpg.Handlers.CharacterHandler do
 
     tenant_id =
       params["tenant_id"] || message["tenant_id"] ||
-        BotArmyRuntime.Tenant.default_tenant_id()
+        BotArmyLibraryRuntime.Tenant.default_tenant_id()
 
     character_id = params["character_id"]
 
@@ -60,7 +60,7 @@ defmodule BotArmyRpg.Handlers.CharacterHandler do
 
     tenant_id =
       params["tenant_id"] || message["tenant_id"] ||
-        BotArmyRuntime.Tenant.default_tenant_id()
+        BotArmyLibraryRuntime.Tenant.default_tenant_id()
 
     character_id = params["character_id"]
 
@@ -83,7 +83,7 @@ defmodule BotArmyRpg.Handlers.CharacterHandler do
 
     tenant_id =
       params["tenant_id"] || message["tenant_id"] ||
-        BotArmyRuntime.Tenant.default_tenant_id()
+        BotArmyLibraryRuntime.Tenant.default_tenant_id()
 
     user_id_filter = BotArmyRpg.Identity.resolve_user_id(message, tenant_id)
 
@@ -110,7 +110,7 @@ defmodule BotArmyRpg.Handlers.CharacterHandler do
 
     tenant_id =
       params["tenant_id"] || message["tenant_id"] ||
-        BotArmyRuntime.Tenant.default_tenant_id()
+        BotArmyLibraryRuntime.Tenant.default_tenant_id()
 
     bot_id = Map.get(params, "bot_id", "")
 
@@ -126,7 +126,7 @@ defmodule BotArmyRpg.Handlers.CharacterHandler do
 
     tenant_id =
       params["tenant_id"] || message["tenant_id"] ||
-        BotArmyRuntime.Tenant.default_tenant_id()
+        BotArmyLibraryRuntime.Tenant.default_tenant_id()
 
     bot_id = Map.get(params, "bot_id", "")
 
@@ -158,7 +158,7 @@ defmodule BotArmyRpg.Handlers.CharacterHandler do
 
     tenant_id =
       params["tenant_id"] || message["tenant_id"] ||
-        BotArmyRuntime.Tenant.default_tenant_id()
+        BotArmyLibraryRuntime.Tenant.default_tenant_id()
 
     user_id = BotArmyRpg.Identity.resolve_user_id(message, tenant_id)
     xp_amount = params["xp_amount"] || 100
@@ -171,7 +171,7 @@ defmodule BotArmyRpg.Handlers.CharacterHandler do
 
     tenant_id =
       params["tenant_id"] || message["tenant_id"] ||
-        BotArmyRuntime.Tenant.default_tenant_id()
+        BotArmyLibraryRuntime.Tenant.default_tenant_id()
 
     user_id = BotArmyRpg.Identity.resolve_user_id(message, tenant_id)
     item_id = params["item_id"]
@@ -208,7 +208,7 @@ defmodule BotArmyRpg.Handlers.CharacterHandler do
 
     tenant_id =
       params["tenant_id"] || message["tenant_id"] ||
-        BotArmyRuntime.Tenant.default_tenant_id()
+        BotArmyLibraryRuntime.Tenant.default_tenant_id()
 
     user_id = BotArmyRpg.Identity.resolve_user_id(message, tenant_id)
     slot = params["slot"] || "main_hand"

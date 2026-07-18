@@ -11,7 +11,7 @@ defmodule BotArmyRpg.Handlers.SceneFactHandler do
 
     tenant_id =
       params["tenant_id"] || message["tenant_id"] ||
-        BotArmyRuntime.Tenant.default_tenant_id()
+        BotArmyLibraryRuntime.Tenant.default_tenant_id()
 
     user_id = Map.get(params, "user_id") || Map.get(message, "user_id")
 
@@ -41,7 +41,7 @@ defmodule BotArmyRpg.Handlers.SceneFactHandler do
 
     tenant_id =
       params["tenant_id"] || message["tenant_id"] ||
-        BotArmyRuntime.Tenant.default_tenant_id()
+        BotArmyLibraryRuntime.Tenant.default_tenant_id()
 
     session_id = params["session_id"]
 

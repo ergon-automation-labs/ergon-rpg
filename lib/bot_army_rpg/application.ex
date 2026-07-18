@@ -43,7 +43,7 @@ defmodule BotArmyRpg.Application do
               {BotArmyRpg.PulsePublisher, []},
               {BotArmyRpg.DailyNarrator, []},
               {BotArmyRpg.ConsequenceEngine, []},
-              {BotArmyLearning.OutcomeTracker,
+              {BotArmyLibraryLearning.OutcomeTracker,
                [repo: BotArmyRpg.Repo, name: :rpg_outcome_tracker]}
             ] ++ maybe_add_health_responder()
 
@@ -55,7 +55,7 @@ defmodule BotArmyRpg.Application do
     if Application.get_env(:bot_army_library_runtime, :pack_mode, false),
       do: [],
       else: [
-        {BotArmyRuntime.Health.Responder,
+        {BotArmyLibraryRuntime.Health.Responder,
          [bot_name: :rpg, repo: BotArmyRpg.Repo, version: @version]}
       ]
   end

@@ -7,7 +7,7 @@ defmodule BotArmyRpg.Handlers.IdentityHandler do
 
     tenant_id =
       params["tenant_id"] || message["tenant_id"] ||
-        BotArmyRuntime.Tenant.default_tenant_id()
+        BotArmyLibraryRuntime.Tenant.default_tenant_id()
 
     case BotArmyRpg.Identity.bind_user(message, tenant_id) do
       {:ok, normalized_user_id} ->
@@ -45,7 +45,7 @@ defmodule BotArmyRpg.Handlers.IdentityHandler do
 
     tenant_id =
       params["tenant_id"] || message["tenant_id"] ||
-        BotArmyRuntime.Tenant.default_tenant_id()
+        BotArmyLibraryRuntime.Tenant.default_tenant_id()
 
     binding = BotArmyRpg.Identity.resolve_binding(message, tenant_id)
 

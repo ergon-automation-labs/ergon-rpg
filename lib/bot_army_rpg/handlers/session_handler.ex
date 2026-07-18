@@ -15,7 +15,7 @@ defmodule BotArmyRpg.Handlers.SessionHandler do
 
     tenant_id =
       params["tenant_id"] || message["tenant_id"] ||
-        BotArmyRuntime.Tenant.default_tenant_id()
+        BotArmyLibraryRuntime.Tenant.default_tenant_id()
 
     user_id = BotArmyRpg.Identity.resolve_user_id(message, tenant_id)
 
@@ -48,7 +48,7 @@ defmodule BotArmyRpg.Handlers.SessionHandler do
 
     tenant_id =
       params["tenant_id"] || message["tenant_id"] ||
-        BotArmyRuntime.Tenant.default_tenant_id()
+        BotArmyLibraryRuntime.Tenant.default_tenant_id()
 
     session_id = params["session_id"]
 
@@ -83,7 +83,7 @@ defmodule BotArmyRpg.Handlers.SessionHandler do
 
     tenant_id =
       params["tenant_id"] || message["tenant_id"] ||
-        BotArmyRuntime.Tenant.default_tenant_id()
+        BotArmyLibraryRuntime.Tenant.default_tenant_id()
 
     session_id = params["session_id"]
 
@@ -129,7 +129,7 @@ defmodule BotArmyRpg.Handlers.SessionHandler do
 
     tenant_id =
       params["tenant_id"] || message["tenant_id"] ||
-        BotArmyRuntime.Tenant.default_tenant_id()
+        BotArmyLibraryRuntime.Tenant.default_tenant_id()
 
     session_id = params["session_id"]
 
@@ -149,7 +149,7 @@ defmodule BotArmyRpg.Handlers.SessionHandler do
 
     tenant_id =
       params["tenant_id"] || message["tenant_id"] ||
-        BotArmyRuntime.Tenant.default_tenant_id()
+        BotArmyLibraryRuntime.Tenant.default_tenant_id()
 
     session_id = params["session_id"]
     description = params["description"]
@@ -162,7 +162,7 @@ defmodule BotArmyRpg.Handlers.SessionHandler do
 
     tenant_id =
       params["tenant_id"] || message["tenant_id"] ||
-        BotArmyRuntime.Tenant.default_tenant_id()
+        BotArmyLibraryRuntime.Tenant.default_tenant_id()
 
     session_id = params["session_id"]
 
@@ -174,7 +174,7 @@ defmodule BotArmyRpg.Handlers.SessionHandler do
 
     tenant_id =
       params["tenant_id"] || message["tenant_id"] ||
-        BotArmyRuntime.Tenant.default_tenant_id()
+        BotArmyLibraryRuntime.Tenant.default_tenant_id()
 
     sessions = session_store().list(tenant_id)
     {:ok, %{"sessions" => sessions, "count" => length(sessions)}}
@@ -190,7 +190,7 @@ defmodule BotArmyRpg.Handlers.SessionHandler do
 
     tenant_id =
       params["tenant_id"] || message["tenant_id"] ||
-        BotArmyRuntime.Tenant.default_tenant_id()
+        BotArmyLibraryRuntime.Tenant.default_tenant_id()
 
     user_id = BotArmyRpg.Identity.resolve_user_id(message, tenant_id)
     session_id = params["session_id"] |> blank_to_nil()
@@ -225,7 +225,7 @@ defmodule BotArmyRpg.Handlers.SessionHandler do
 
     tenant_id =
       params["tenant_id"] || message["tenant_id"] ||
-        BotArmyRuntime.Tenant.default_tenant_id()
+        BotArmyLibraryRuntime.Tenant.default_tenant_id()
 
     user_id = BotArmyRpg.Identity.resolve_user_id(message, tenant_id)
     session_id = params["session_id"] |> blank_to_nil()

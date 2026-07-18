@@ -141,7 +141,7 @@ defmodule BotArmyRpg.ThemeStore do
   end
 
   defp publish_theme_broadcast(theme_map) do
-    BotArmyRuntime.NATS.Publisher.publish("rpg.theme.current", theme_map)
+    BotArmyLibraryRuntime.NATS.Publisher.publish("rpg.theme.current", theme_map)
   end
 
   defp publish_theme_event(theme_map) do
