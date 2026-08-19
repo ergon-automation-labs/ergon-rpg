@@ -23,7 +23,7 @@ defmodule BotArmyRpg.Handlers.SceneFactHandlerTest do
         "id" => Ecto.UUID.generate(),
         "session_id" => session_id,
         "content" => "The door creaks open",
-        "tenant_id" => BotArmyRuntime.Tenant.default_tenant_id()
+        "tenant_id" => BotArmyLibraryRuntime.Tenant.default_tenant_id()
       }
 
       BotArmyRpg.SceneFactStoreMock

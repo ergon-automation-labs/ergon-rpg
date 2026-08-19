@@ -100,7 +100,7 @@ defmodule BotArmyRpg.CharacterProvisioningTest do
 
   describe "bot_character_name/2" do
     test "uses theme persona name when available" do
-      theme = BotArmyRuntime.Personality.ThemeConfig.fantasy()
+      theme = BotArmyLibraryRuntime.Personality.ThemeConfig.fantasy()
       assert CharacterProvisioning.bot_character_name("gtd_bot", theme) == "The Lorekeeper"
     end
 

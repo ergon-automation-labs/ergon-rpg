@@ -20,7 +20,7 @@ defmodule BotArmyRpg.Handlers.CharacterHandlerTest do
       character = %{
         "id" => Ecto.UUID.generate(),
         "name" => "Aria",
-        "tenant_id" => BotArmyRuntime.Tenant.default_tenant_id()
+        "tenant_id" => BotArmyLibraryRuntime.Tenant.default_tenant_id()
       }
 
       BotArmyRpg.CharacterStoreMock
@@ -55,7 +55,7 @@ defmodule BotArmyRpg.Handlers.CharacterHandlerTest do
       character = %{
         "id" => character_id,
         "name" => "Aria",
-        "tenant_id" => BotArmyRuntime.Tenant.default_tenant_id(),
+        "tenant_id" => BotArmyLibraryRuntime.Tenant.default_tenant_id(),
         "stats" => %{"ability_scores" => %{}},
         "inventory" => %{}
       }
@@ -151,7 +151,7 @@ defmodule BotArmyRpg.Handlers.CharacterHandlerTest do
       character = %{
         "id" => Ecto.UUID.generate(),
         "name" => "Aria",
-        "tenant_id" => BotArmyRuntime.Tenant.default_tenant_id(),
+        "tenant_id" => BotArmyLibraryRuntime.Tenant.default_tenant_id(),
         "user_id" => bound_user_id
       }
 
