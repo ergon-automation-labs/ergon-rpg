@@ -75,7 +75,7 @@ defmodule BotArmyRpg.StaleCampaignCloser do
     end)
   end
 
-  defp stale?(updated_at, stale_days) when is_nil(updated_at), do: false
+  defp stale?(updated_at, _stale_days) when is_nil(updated_at), do: false
 
   defp stale?(updated_at, stale_days) do
     days_elapsed = DateTime.diff(DateTime.utc_now(), updated_at, :day)

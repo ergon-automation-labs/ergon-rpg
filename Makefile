@@ -3,7 +3,7 @@ VERSION ?= $(shell grep 'version:' mix.exs | head -1 | sed 's/.*"\([^"]*\)".*/\1
 SCRIPTS_DIRECTORY ?= $(abspath $(CURDIR)/../scripts)
 MIX ?= /Users/abby/.local/share/mise/shims/mix
 
-.PHONY: setup help deps test credo dialyzer coverage check format clean release publish-release setup-hooks setup-db reset-db logs push-and-publish rpg-theme-cyberpunk rpg-session-start rpg-start-round rpg-next-turn rpg-spectate-help bump-version
+.PHONY: setup help deps test dialyzer coverage check format clean release publish-release setup-hooks setup-db reset-db logs push-and-publish rpg-theme-cyberpunk rpg-session-start rpg-start-round rpg-next-turn rpg-spectate-help sync-release-version compile
 
 help:
 	@echo "RPG Bot"
@@ -71,7 +71,7 @@ reset-db:
 init:
 	@if [ ! -d .git ]; then git init; echo "Git initialized."; else echo "Git already initialized."; fi
 
-compile:
+_compile-impl:
 	@LOG_FILE="/tmp/compile-rpg-$$(date +%s).log"; \
 	echo "Compiling rpg and logging to $$LOG_FILE..."; \
 	$(MIX) compile 2>&1 | tee "$$LOG_FILE"; \
@@ -80,17 +80,8 @@ compile:
 deps:
 	$(MIX_BIN) deps.get
 
-compile:
-	@LOG_FILE="/tmp/compile-rpg-$$(date +%s).log"; \
-	echo "Compiling rpg and logging to $$LOG_FILE..."; \
-	$(MIX) compile 2>&1 | tee "$$LOG_FILE"; \
-	echo "✓ Compilation log: $$LOG_FILE"
-
 test:
 	$(MIX_BIN) test
-
-credo:
-	$(MIX_BIN) credo
 
 dialyzer: deps
 	$(MIX_BIN) dialyzer
@@ -135,14 +126,25 @@ publish-release: release
 		--draft=false
 	@echo "✓ Release published to GitHub"
 	@echo ""
+	@echo "Syncing release marker..."
+	@$(MAKE) sync-release-version
+	@echo ""
 	@echo "Next steps:"
 	@echo "1. Jenkins will automatically detect the new release"
 	@echo "2. Trigger deployment in Jenkins UI or wait for auto-deployment"
 	@echo "3. Check deployment status: make jenkins-logs"
 	@echo ""
 
-push-and-publish:
-	@git push && $(MAKE) publish-release
+push-and-publish: git-push publish-release
+
+sync-release-version:
+	@VERSION=$$(sed -n 's/^[[:space:]]*version:[[:space:]]*"\([^"]*\)".*/\1/p' mix.exs | head -n 1); \
+	if [ -z "$$VERSION" ]; then \
+		echo "❌ Failed to resolve version from mix.exs"; exit 1; \
+	fi; \
+	TIMESTAMP=$$(date -u +"%Y-%m-%dT%H:%M:%SZ"); \
+	echo "$$VERSION" > .release-published; \
+	echo "✅ Synced release version: v$$VERSION ($$TIMESTAMP)"
 
 # --- RPG game control targets ---
 NATS_SERVER := nats://localhost:4222
@@ -183,19 +185,12 @@ rpg-spectate-help:
 
 logs:
 	@$(SCRIPTS_DIRECTORY)/tail_bot_log.sh
-bump-version:
-	@if [ -z "$(BUMP)" ]; then echo "Usage: make bump-version BUMP=major|minor|patch"; exit 1; fi
-	@OLD=$$(grep 'version:' mix.exs | head -1 | sed -E 's/.*version: "([^"]+)".*/\1/'); \
-	bash $(SCRIPTS_DIRECTORY)/bump_version.sh mix.exs $(BUMP) > /dev/null; \
-	NEW=$$(grep 'version:' mix.exs | head -1 | sed -E 's/.*version: "([^"]+)".*/\1/'); \
-	echo "✓ Bumped: $$OLD → $$NEW"
 
-push: test compile credo
-	@echo "✅ All validations passed"
-	@echo "$$(date +%s)" > .push-validated
-	@echo "✓ Proof-of-validation created"
-	@$(MAKE) git-push
-
-
-git-push:
-	@git push origin main 2>&1 | tail -3
+# Shared targets (push, credo, pre-push-cleanup, bump-version, git-push).
+# Defined once in bot_army_infra so they cannot drift per repo.
+BOT_ARMY_COMMON_MK := $(abspath $(CURDIR)/../bot_army_infra/make/common.mk)
+ifeq ($(wildcard $(BOT_ARMY_COMMON_MK)),)
+$(warning bot_army_infra not found at $(BOT_ARMY_COMMON_MK) - shared targets unavailable)
+else
+include $(BOT_ARMY_COMMON_MK)
+endif

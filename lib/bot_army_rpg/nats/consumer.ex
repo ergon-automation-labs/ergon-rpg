@@ -8,7 +8,7 @@ defmodule BotArmyRpg.NATS.Consumer do
   use GenServer
   require Logger
 
-  alias BotArmyLibraryRuntime.NATS.{Connection, Publisher, Reply}
+  alias BotArmyLibraryRuntime.NATS.{Connection, Reply}
   alias BotArmyLibraryRuntime.Registry, as: BotArmyRegistry
   alias BotArmyLibraryCore.NATS.Decoder
 

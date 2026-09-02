@@ -76,9 +76,9 @@ defmodule BotArmyRpg.CharacterProvisioning do
     # 2. Try Soul identity name (graceful if repo is unavailable)
     soul_name =
       try do
-        case BotArmy.Soul.get(String.to_atom(bot_id_str)) do
-          nil -> nil
-          soul -> get_in(soul.config, ["identity", "name"])
+        case BotArmyLibraryRuntime.Soul.get(String.to_atom(bot_id_str)) do
+          {:ok, soul} -> get_in(soul.config, ["identity", "name"])
+          _ -> nil
         end
       rescue
         _ -> nil
@@ -161,9 +161,9 @@ defmodule BotArmyRpg.CharacterProvisioning do
     bot_id_str = normalize_bot_id(bot_id)
 
     try do
-      case BotArmy.Soul.get(String.to_atom(bot_id_str)) do
-        nil -> nil
-        soul -> get_in(soul.config, ["play_style", "strategy"])
+      case BotArmyLibraryRuntime.Soul.get(String.to_atom(bot_id_str)) do
+        {:ok, soul} -> get_in(soul.config, ["play_style", "strategy"])
+        _ -> nil
       end
     rescue
       _ -> nil

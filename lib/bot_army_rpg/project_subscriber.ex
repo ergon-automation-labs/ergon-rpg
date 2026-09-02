@@ -72,6 +72,10 @@ defmodule BotArmyRpg.ProjectSubscriber do
         {:ok, conn} -> {:ok, conn}
         {:error, reason} -> {:error, reason}
       end
+    rescue
+      e ->
+        Logger.debug("[ProjectSubscriber] Exception getting NATS connection: #{inspect(e)}")
+        {:error, e}
     catch
       :exit, _reason ->
         Logger.debug("[ProjectSubscriber] NATS.Connection not available yet")
@@ -79,10 +83,6 @@ defmodule BotArmyRpg.ProjectSubscriber do
 
       e ->
         Logger.debug("[ProjectSubscriber] Error getting NATS connection: #{inspect(e)}")
-        {:error, e}
-    rescue
-      e ->
-        Logger.debug("[ProjectSubscriber] Exception getting NATS connection: #{inspect(e)}")
         {:error, e}
     end
   end
@@ -169,12 +169,10 @@ defmodule BotArmyRpg.ProjectSubscriber do
   end
 
   defp get_current_theme(tenant_id) do
-    case ThemeStore.handle_get_current(tenant_id) do
-      nil -> nil
-      theme -> theme
+    case ThemeStore.get_current(tenant_id) do
+      {:ok, theme} -> theme
+      _ -> nil
     end
-  rescue
-    _ -> nil
   end
 
   defp default_theme do

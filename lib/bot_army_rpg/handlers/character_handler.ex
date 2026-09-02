@@ -182,7 +182,7 @@ defmodule BotArmyRpg.Handlers.CharacterHandler do
          inventory <- Map.get(character, "inventory", %{}),
          items <- Map.get(inventory, "items", []),
          {:ok, item} <- find_item_by_id(items, item_id) do
-      Logger.info("[CharacterHandler] Equipping #{item["name"]} for user #{user_id}")
+      Logger.info("[CharacterHandler] Equipping #{item["name"]} (#{item_id}) in #{slot} for user #{user_id}")
 
       updated_inventory =
         inventory
