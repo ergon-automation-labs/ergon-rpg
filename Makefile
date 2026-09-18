@@ -1,7 +1,6 @@
 MIX_BIN ?= $(shell which mix 2>/dev/null || echo /Users/abby/.local/share/mise/shims/mix)
 VERSION ?= $(shell grep 'version:' mix.exs | head -1 | sed 's/.*"\([^"]*\)".*/\1/')
 SCRIPTS_DIRECTORY ?= $(abspath $(CURDIR)/../scripts)
-MIX ?= /Users/abby/.local/share/mise/shims/mix
 
 .PHONY: setup help deps test dialyzer coverage check format clean release publish-release setup-hooks setup-db reset-db logs push-and-publish rpg-theme-cyberpunk rpg-session-start rpg-start-round rpg-next-turn rpg-spectate-help sync-release-version compile
 
