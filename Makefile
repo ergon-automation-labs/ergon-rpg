@@ -1,4 +1,3 @@
-MIX_BIN ?= $(shell which mix 2>/dev/null || echo /Users/abby/.local/share/mise/shims/mix)
 VERSION ?= $(shell grep 'version:' mix.exs | head -1 | sed 's/.*"\([^"]*\)".*/\1/')
 SCRIPTS_DIRECTORY ?= $(abspath $(CURDIR)/../scripts)
 
@@ -56,15 +55,15 @@ setup-hooks:
 
 setup-db:
 	@echo "Setting up test database..."
-	@MIX_ENV=test $(MIX_BIN) ecto.create || true
-	@MIX_ENV=test $(MIX_BIN) ecto.migrate
+	@MIX_ENV=test $(MIX) ecto.create || true
+	@MIX_ENV=test $(MIX) ecto.migrate
 	@echo "✓ Test database created and migrations applied"
 
 reset-db:
 	@echo "⚠️  Resetting test database (dropping and recreating)..."
-	@MIX_ENV=test $(MIX_BIN) ecto.drop || true
-	@MIX_ENV=test $(MIX_BIN) ecto.create
-	@MIX_ENV=test $(MIX_BIN) ecto.migrate
+	@MIX_ENV=test $(MIX) ecto.drop || true
+	@MIX_ENV=test $(MIX) ecto.create
+	@MIX_ENV=test $(MIX) ecto.migrate
 	@echo "✓ Test database reset complete"
 
 init:
@@ -77,32 +76,32 @@ _compile-impl:
 	echo "✓ Compilation log: $$LOG_FILE"
 
 deps:
-	$(MIX_BIN) deps.get
+	$(MIX) deps.get
 
 test:
-	$(MIX_BIN) test
+	$(MIX) test
 
 dialyzer: deps
-	$(MIX_BIN) dialyzer
+	$(MIX) dialyzer
 
 coverage:
-	$(MIX_BIN) coveralls
+	$(MIX) coveralls
 
 check: test credo
 	@echo "All checks passed!"
 
 format:
-	$(MIX_BIN) format
+	$(MIX) format
 
 clean:
-	$(MIX_BIN) clean
+	$(MIX) clean
 	rm -rf _build cover
 
 release:
 	@echo "==============================================="
 	@echo "Building OTP release"
 	@echo "==============================================="
-	MIX_ENV=prod $(MIX_BIN) release
+	MIX_ENV=prod $(MIX) release
 	@echo ""
 	@echo "✓ Release built successfully"
 	@echo "Location: _build/prod/rel/rpg_bot/"
