@@ -14,6 +14,15 @@ defmodule BotArmyRpg.SceneFactStore do
   def list_for_session(tenant_id, session_id),
     do: GenServer.call(@server, {:list_for_session, tenant_id, session_id})
 
+  @doc """
+  The newest turns of this identity's *other* windows, newest first.
+
+  The window's own turns are excluded, because the caller already has them: what
+  this answers is what came before the window that is open now.
+  """
+  def list_recent_for_tenant(tenant_id, opts \\ []),
+    do: GenServer.call(@server, {:list_recent_for_tenant, tenant_id, opts})
+
   def clear, do: GenServer.call(@server, :clear)
 
   @impl true
@@ -80,10 +89,34 @@ defmodule BotArmyRpg.SceneFactStore do
   end
 
   @impl true
+  def handle_call({:list_recent_for_tenant, tenant_id, opts}, _from, state) do
+    exclude = Keyword.get(opts, :exclude_session_id)
+    user_id = Keyword.get(opts, :user_id)
+    limit = Keyword.get(opts, :limit, 10)
+
+    facts =
+      state
+      |> Map.values()
+      |> Enum.filter(&(&1["tenant_id"] == tenant_id and &1["user_id"] == user_id))
+      |> reject_session(exclude)
+      |> Enum.sort_by(& &1["created_at"], :desc)
+      |> Enum.take(limit)
+
+    {:reply, {:ok, facts}, state}
+  end
+
+  @impl true
   def handle_call(:clear, _from, _state) do
     BotArmyRpg.Repo.delete_all(BotArmyRpg.Schemas.SceneFact)
     {:reply, :ok, %{}}
   end
+
+  # Only a named window is excluded: an unnamed one must not drop facts that carry
+  # no session id at all.
+  defp reject_session(facts, exclude) when is_binary(exclude) and exclude != "",
+    do: Enum.reject(facts, &(&1["session_id"] == exclude))
+
+  defp reject_session(facts, _exclude), do: facts
 
   defp convert_to_uuid(value) when is_binary(value) do
     case Ecto.UUID.cast(value) do

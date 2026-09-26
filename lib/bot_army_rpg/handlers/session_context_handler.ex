@@ -57,23 +57,68 @@ defmodule BotArmyRpg.Handlers.SessionContextHandler do
          {:ok, facts} <- fetch_scene_facts(tenant_id, session["id"], fact_limit),
          {:ok, character} <- fetch_character(tenant_id, user_id, bot_id),
          {:ok, theme} <- fetch_theme(tenant_id) do
-      context = %{
-        "session_id" => session["id"],
-        "session_status" => session["status"],
-        "scene_description" => session["scene_description"],
-        "session_metadata" => session["metadata"] || %{},
-        "character" => character,
-        "theme" => theme,
-        "scene_facts" => Enum.map(facts, & &1["content"]),
-        "tenant_id" => tenant_id,
-        "user_id" => user_id
-      }
+      context =
+        %{
+          "session_id" => session["id"],
+          "session_status" => session["status"],
+          "scene_description" => session["scene_description"],
+          "session_metadata" => session["metadata"] || %{},
+          "character" => character,
+          "theme" => theme,
+          "scene_facts" => Enum.map(facts, & &1["content"]),
+          "tenant_id" => tenant_id,
+          "user_id" => user_id
+        }
+        |> maybe_carry_history(tenant_id, user_id, session["id"], params)
 
       {:ok, context}
     end
   end
 
   # --- Private ---
+
+  # The story so far: the newest turns of this identity's *other* windows, so a window
+  # opens with what came before it instead of cold. Asked for explicitly, and a consumer
+  # that does not ask gets no key at all — a field this bot never sent is not a reading
+  # (N+26). A carry that cannot be read is reported as `nil` (unreported) and never as
+  # `[]` (nothing came before), because those are different facts and the second one
+  # would be invented. The carry never takes the window down: the window is the read.
+  defp maybe_carry_history(context, tenant_id, user_id, session_id, params) do
+    if Map.get(params, "carry_history", false) do
+      Map.put(context, "carry_history", carry_history(tenant_id, user_id, session_id, params))
+    else
+      context
+    end
+  end
+
+  defp carry_history(tenant_id, user_id, session_id, params) do
+    opts = [
+      exclude_session_id: session_id,
+      user_id: user_id,
+      limit: Map.get(params, "carry_limit", 10)
+    ]
+
+    case scene_fact_store().list_recent_for_tenant(tenant_id, opts) do
+      {:ok, facts} ->
+        facts
+        |> Enum.reverse()
+        |> Enum.map(&carry_row/1)
+
+      {:error, reason} ->
+        Logger.warning("[SessionContext] Carry history unread: #{inspect(reason)}")
+        nil
+    end
+  end
+
+  # Four fields, and no fifth: the line, who said it, which window it is from, and when.
+  defp carry_row(fact) do
+    %{
+      "content" => fact["content"],
+      "source" => fact["source"],
+      "session_id" => fact["session_id"],
+      "at" => fact["created_at"]
+    }
+  end
 
   defp find_active_session(tenant_id, user_id, nil) do
     case session_store().list(tenant_id) do
@@ -231,5 +276,4 @@ defmodule BotArmyRpg.Handlers.SessionContextHandler do
       {:error, reason} -> {:error, reason}
     end
   end
-
 end

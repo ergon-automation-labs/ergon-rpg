@@ -197,6 +197,152 @@ defmodule BotArmyRpg.Handlers.SessionContextHandlerTest do
   end
 
   # ───────────────────────────────────────────────────────────────────────────
+  # The story so far (carry history)
+  # ───────────────────────────────────────────────────────────────────────────
+
+  defp carry_history_session(tenant, user, session_id) do
+    Mox.expect(BotArmyRpg.SessionStoreMock, :get, fn ^tenant, ^session_id ->
+      {:ok,
+       %{
+         "id" => session_id,
+         "tenant_id" => tenant,
+         "user_id" => user,
+         "status" => "active",
+         "scene_description" => "A new alleyway, cold"
+       }}
+    end)
+
+    Mox.expect(BotArmyRpg.SceneFactStoreMock, :list_for_session, fn ^tenant, ^session_id ->
+      {:ok, []}
+    end)
+
+    # Stubbed, not expected: with no `bot_id` in the payload the character is never
+    # looked up at all, and a carry test is not the place to demand it.
+    Mox.stub(BotArmyRpg.CharacterStoreMock, :get_by_bot_id, fn ^tenant, _bot ->
+      {:error, :not_found}
+    end)
+
+    Mox.expect(BotArmyRpg.ThemeStoreMock, :get_current, fn ^tenant -> {:error, :not_found} end)
+  end
+
+  test "carry_history brings the earlier windows' turns, oldest first, and not this window's" do
+    tenant = "00000000-0000-0000-0000-000000000099"
+    user = "00000000-0000-0000-0000-0000000000aa"
+    session_id = "00000000-0000-0000-0000-0000000000cc"
+    earlier = "00000000-0000-0000-0000-0000000000bb"
+    carry_history_session(tenant, user, session_id)
+
+    Mox.expect(BotArmyRpg.SceneFactStoreMock, :list_recent_for_tenant, fn ^tenant, opts ->
+      # The window being read is excluded, and the ask is this identity's, so one
+      # household member's story never becomes another's.
+      assert opts[:exclude_session_id] == session_id
+      assert opts[:user_id] == user
+
+      {:ok,
+       [
+         %{
+           "content" => "the GM closed the door",
+           "source" => "gm",
+           "session_id" => earlier,
+           "created_at" => "2026-05-10T12:00:00"
+         },
+         %{
+           "content" => "Hi!",
+           "source" => "operator",
+           "session_id" => earlier,
+           "created_at" => "2026-05-10T11:00:00"
+         }
+       ]}
+    end)
+
+    msg = %{
+      "payload" => %{
+        "tenant_id" => tenant,
+        "user_id" => user,
+        "session_id" => session_id,
+        "carry_history" => true
+      }
+    }
+
+    assert {:ok, context} = SessionContextHandler.handle_gather_context(msg)
+
+    assert Enum.map(context["carry_history"], & &1["content"]) == [
+             "Hi!",
+             "the GM closed the door"
+           ]
+
+    assert Enum.map(context["carry_history"], & &1["source"]) == ["operator", "gm"]
+    assert Enum.all?(context["carry_history"], &(&1["session_id"] == earlier))
+  end
+
+  test "carry_history is not asked for: the key is absent, not empty" do
+    tenant = "00000000-0000-0000-0000-000000000099"
+    user = "00000000-0000-0000-0000-0000000000aa"
+    session_id = "00000000-0000-0000-0000-0000000000cc"
+    carry_history_session(tenant, user, session_id)
+
+    msg = %{
+      "payload" => %{
+        "tenant_id" => tenant,
+        "user_id" => user,
+        "session_id" => session_id
+      }
+    }
+
+    assert {:ok, context} = SessionContextHandler.handle_gather_context(msg)
+    refute Map.has_key?(context, "carry_history")
+  end
+
+  test "carry_history read cleanly and nothing came before: an empty list, not a nil" do
+    tenant = "00000000-0000-0000-0000-000000000099"
+    user = "00000000-0000-0000-0000-0000000000aa"
+    session_id = "00000000-0000-0000-0000-0000000000cc"
+    carry_history_session(tenant, user, session_id)
+
+    Mox.expect(BotArmyRpg.SceneFactStoreMock, :list_recent_for_tenant, fn ^tenant, _opts ->
+      {:ok, []}
+    end)
+
+    msg = %{
+      "payload" => %{
+        "tenant_id" => tenant,
+        "user_id" => user,
+        "session_id" => session_id,
+        "carry_history" => true
+      }
+    }
+
+    assert {:ok, context} = SessionContextHandler.handle_gather_context(msg)
+    assert context["carry_history"] == []
+  end
+
+  test "a carry that cannot be read is unreported, and the window still stands" do
+    tenant = "00000000-0000-0000-0000-000000000099"
+    user = "00000000-0000-0000-0000-0000000000aa"
+    session_id = "00000000-0000-0000-0000-0000000000cc"
+    carry_history_session(tenant, user, session_id)
+
+    Mox.expect(BotArmyRpg.SceneFactStoreMock, :list_recent_for_tenant, fn ^tenant, _opts ->
+      {:error, :database_error}
+    end)
+
+    msg = %{
+      "payload" => %{
+        "tenant_id" => tenant,
+        "user_id" => user,
+        "session_id" => session_id,
+        "carry_history" => true
+      }
+    }
+
+    assert {:ok, context} = SessionContextHandler.handle_gather_context(msg)
+    assert context["session_id"] == session_id
+    # nil is "the bot did not say", [] is "nothing came before". Only one of those is true.
+    assert context["carry_history"] == nil
+    refute context["carry_history"] == []
+  end
+
+  # ───────────────────────────────────────────────────────────────────────────
   # Adventure Context Query (bot-centric)
   # ───────────────────────────────────────────────────────────────────────────
 
