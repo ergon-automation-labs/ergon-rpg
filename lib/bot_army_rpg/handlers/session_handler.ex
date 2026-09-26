@@ -169,6 +169,21 @@ defmodule BotArmyRpg.Handlers.SessionHandler do
     session_store().get(tenant_id, session_id)
   end
 
+  @doc """
+  Every session this tenant holds, with a count.
+
+  The store answers `{:ok, sessions}` — a two-tuple — so it is matched, never
+  assumed to be the list itself. The version of this function that took the
+  answer and called `length/1` on it raised `ArgumentError` inside the consumer,
+  and a handler that raises **never replies**: `rpg.session.list` was a live
+  subject that silently hung every caller (found 2026-09-26, fixed below).
+
+  Anything that is not `{:ok, list}` or `{:error, reason}` is refused as
+  `:bad_store_answer` rather than guessed at, so a caller hears that the store
+  said something unexpected instead of waiting forever for an answer that the
+  handler died before sending. The log names the *shape* of the answer and never
+  its contents — a session carries a scene description and a user id.
+  """
   def handle_list(message) do
     params = message["payload"] || message
 
@@ -176,9 +191,25 @@ defmodule BotArmyRpg.Handlers.SessionHandler do
       params["tenant_id"] || message["tenant_id"] ||
         BotArmyLibraryRuntime.Tenant.default_tenant_id()
 
-    sessions = session_store().list(tenant_id)
-    {:ok, %{"sessions" => sessions, "count" => length(sessions)}}
+    case session_store().list(tenant_id) do
+      {:ok, sessions} when is_list(sessions) ->
+        {:ok, %{"sessions" => sessions, "count" => length(sessions)}}
+
+      {:error, reason} ->
+        {:error, reason}
+
+      other ->
+        Logger.error("[SessionHandler] List answered #{shape(other)}; refusing")
+        {:error, :bad_store_answer}
+    end
   end
+
+  # What an unexpected answer looks like, said without saying what is in it.
+  defp shape(tuple) when is_tuple(tuple), do: "a #{tuple_size(tuple)}-tuple"
+  defp shape(%{__struct__: module}), do: "a #{inspect(module)}"
+  defp shape(list) when is_list(list), do: "a bare list"
+  defp shape(other) when is_map(other), do: "a map"
+  defp shape(_other), do: "something unexpected"
 
   @doc """
   Attach a **character** to an **active** session. Caller must resolve to `user_id`;

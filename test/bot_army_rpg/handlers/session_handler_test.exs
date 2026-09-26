@@ -151,4 +151,54 @@ defmodule BotArmyRpg.Handlers.SessionHandlerTest do
 
     assert {:error, :not_joined} = SessionHandler.handle_leave(msg)
   end
+
+  describe "handle_list/1" do
+    test "list answers the sessions the store holds, with a count" do
+      tenant = "00000000-0000-0000-0000-000000000099"
+      one = %{"id" => "s-1", "tenant_id" => tenant, "status" => "active"}
+      two = %{"id" => "s-2", "tenant_id" => tenant, "status" => "ended"}
+
+      Mox.expect(BotArmyRpg.SessionStoreMock, :list, fn ^tenant -> {:ok, [one, two]} end)
+
+      assert {:ok, %{"sessions" => [^one, ^two], "count" => 2}} =
+               SessionHandler.handle_list(%{"payload" => %{"tenant_id" => tenant}})
+    end
+
+    test "an empty store answers an empty list, which is not a refusal" do
+      tenant = "00000000-0000-0000-0000-000000000099"
+
+      Mox.expect(BotArmyRpg.SessionStoreMock, :list, fn ^tenant -> {:ok, []} end)
+
+      assert {:ok, %{"sessions" => [], "count" => 0}} =
+               SessionHandler.handle_list(%{"payload" => %{"tenant_id" => tenant}})
+    end
+
+    test "a store refusal is passed through, not turned into an empty list" do
+      tenant = "00000000-0000-0000-0000-000000000099"
+
+      Mox.expect(BotArmyRpg.SessionStoreMock, :list, fn ^tenant -> {:error, :unavailable} end)
+
+      assert {:error, :unavailable} =
+               SessionHandler.handle_list(%{"payload" => %{"tenant_id" => tenant}})
+    end
+
+    test "an answer the handler cannot read is refused, not crashed on" do
+      tenant = "00000000-0000-0000-0000-000000000099"
+
+      # The shape that used to be assumed: the list itself. Handing this to
+      # length/1 is what made the subject hang, so it is refused out loud.
+      Mox.expect(BotArmyRpg.SessionStoreMock, :list, fn ^tenant -> [] end)
+
+      assert {:error, :bad_store_answer} =
+               SessionHandler.handle_list(%{"payload" => %{"tenant_id" => tenant}})
+    end
+
+    test "the tenant defaults when the request does not name one" do
+      default = BotArmyLibraryRuntime.Tenant.default_tenant_id()
+
+      Mox.expect(BotArmyRpg.SessionStoreMock, :list, fn ^default -> {:ok, []} end)
+
+      assert {:ok, %{"count" => 0}} = SessionHandler.handle_list(%{})
+    end
+  end
 end
