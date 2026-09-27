@@ -22,6 +22,72 @@ defmodule BotArmyRpg.Handlers.SessionHandlerTest do
     :ok
   end
 
+  describe "handle_open/1" do
+    test "enters the open window without opening another one" do
+      tenant = "00000000-0000-0000-0000-000000000099"
+      user = "00000000-0000-0000-0000-0000000000aa"
+      open_window = session(tenant, user, "2026-09-01T10:00:00")
+
+      Mox.expect(BotArmyRpg.SessionStoreMock, :list, fn ^tenant -> {:ok, [open_window]} end)
+
+      # No `create` expectation is set: `Mox.verify_on_exit!` fails the test if the
+      # handler opens a second window here, which is the whole point of the subject.
+      assert {:ok, %{"session" => %{"id" => id}, "opened" => false}} =
+               SessionHandler.handle_open(%{
+                 "payload" => %{"tenant_id" => tenant, "user_id" => user}
+               })
+
+      assert id == open_window["id"]
+    end
+
+    test "opens one when there is none, and says that it opened it" do
+      tenant = "00000000-0000-0000-0000-000000000099"
+      user = "00000000-0000-0000-0000-0000000000aa"
+      created = session(tenant, user, "2026-09-01T10:00:00")
+
+      Mox.expect(BotArmyRpg.SessionStoreMock, :list, fn ^tenant -> {:ok, []} end)
+
+      Mox.expect(BotArmyRpg.SessionStoreMock, :create, fn payload ->
+        assert payload["status"] == "active"
+        assert payload["tenant_id"] == tenant
+        {:ok, created}
+      end)
+
+      assert {:ok, %{"session" => %{"id" => id}, "opened" => true}} =
+               SessionHandler.handle_open(%{
+                 "payload" => %{
+                   "tenant_id" => tenant,
+                   "user_id" => user,
+                   "scene_description" => "a cold street"
+                 }
+               })
+
+      assert id == created["id"]
+    end
+
+    test "a store that cannot be read is not answered with a window" do
+      tenant = "00000000-0000-0000-0000-000000000099"
+
+      Mox.expect(BotArmyRpg.SessionStoreMock, :list, fn ^tenant -> {:error, :database_error} end)
+
+      assert {:error, :database_error} =
+               SessionHandler.handle_open(%{"payload" => %{"tenant_id" => tenant}})
+    end
+  end
+
+  defp session(tenant, user, updated_at) do
+    %{
+      "id" => "00000000-0000-0000-0000-0000000000cc",
+      "tenant_id" => tenant,
+      "user_id" => user,
+      "status" => "active",
+      "scene_description" => "the training grounds",
+      "character_ids" => %{},
+      "created_at" => "2026-09-01T09:00:00",
+      "updated_at" => updated_at
+    }
+  end
+
   test "join updates character_ids when owner matches and session active" do
     tenant = "00000000-0000-0000-0000-000000000099"
     user = "00000000-0000-0000-0000-0000000000aa"

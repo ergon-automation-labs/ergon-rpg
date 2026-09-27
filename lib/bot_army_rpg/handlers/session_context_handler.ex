@@ -120,21 +120,16 @@ defmodule BotArmyRpg.Handlers.SessionContextHandler do
     }
   end
 
+  # The window, when the caller did not name one: the one this identity touched most
+  # recently. Which window that is is a domain decision with several readers, so it
+  # lives in `BotArmyRpg.Sessions` rather than being re-derived here (it used to be
+  # derived here *and* in `find_active_session_for_user/2`, both taking the store's
+  # first — that is, arbitrary — open window).
   defp find_active_session(tenant_id, user_id, nil) do
-    case session_store().list(tenant_id) do
-      {:ok, sessions} ->
-        active =
-          Enum.filter(sessions, fn s ->
-            s["user_id"] == user_id and s["status"] == "active"
-          end)
-
-        case active do
-          [session | _] -> {:ok, session}
-          [] -> {:error, :no_active_session}
-        end
-
-      {:error, reason} ->
-        {:error, reason}
+    case BotArmyRpg.Sessions.active_for(tenant_id, user_id) do
+      {:ok, session} -> {:ok, session}
+      {:error, :bad_store_answer} -> refuse_bad_store_answer()
+      {:error, reason} -> {:error, reason}
     end
   end
 
@@ -150,6 +145,11 @@ defmodule BotArmyRpg.Handlers.SessionContextHandler do
       {:error, reason} ->
         {:error, reason}
     end
+  end
+
+  defp refuse_bad_store_answer do
+    Logger.error("[SessionContextHandler] Session store answered something unreadable; refusing")
+    {:error, :bad_store_answer}
   end
 
   defp fetch_scene_facts(tenant_id, session_id, limit) do
@@ -252,20 +252,10 @@ defmodule BotArmyRpg.Handlers.SessionContextHandler do
   end
 
   defp find_active_session_for_user(tenant_id, user_id) do
-    case session_store().list(tenant_id) do
-      {:ok, sessions} ->
-        active =
-          Enum.filter(sessions, fn s ->
-            s["user_id"] == user_id and s["status"] == "active"
-          end)
-
-        case active do
-          [session | _] -> {:ok, session}
-          [] -> {:error, :no_active_session}
-        end
-
-      {:error, reason} ->
-        {:error, reason}
+    case BotArmyRpg.Sessions.active_for(tenant_id, user_id) do
+      {:ok, session} -> {:ok, session}
+      {:error, :bad_store_answer} -> refuse_bad_store_answer()
+      {:error, reason} -> {:error, reason}
     end
   end
 

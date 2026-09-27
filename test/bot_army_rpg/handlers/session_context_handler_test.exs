@@ -144,6 +144,57 @@ defmodule BotArmyRpg.Handlers.SessionContextHandlerTest do
     assert context["scene_facts"] == []
   end
 
+  test "gather_context opens the window this identity was last in, not the first one listed" do
+    tenant = "00000000-0000-0000-0000-000000000099"
+    user = "00000000-0000-0000-0000-0000000000aa"
+
+    last_used =
+      window(tenant, user, %{
+        "id" => "last-used",
+        "scene_description" => "the alley we were in",
+        "updated_at" => "2026-09-02T10:00:00"
+      })
+
+    abandoned =
+      window(tenant, user, %{
+        "id" => "abandoned",
+        "scene_description" => "a room we left",
+        "updated_at" => "2026-09-01T10:00:00"
+      })
+
+    # The store hands back a map's values, so this order is not a reading — it is the
+    # order that used to decide which conversation the phone drew.
+    Mox.expect(BotArmyRpg.SessionStoreMock, :list, fn ^tenant -> {:ok, [abandoned, last_used]} end)
+
+    Mox.expect(BotArmyRpg.SceneFactStoreMock, :list_for_session, fn ^tenant, "last-used" ->
+      {:ok, []}
+    end)
+
+    Mox.expect(BotArmyRpg.ThemeStoreMock, :get_current, fn ^tenant -> {:error, :not_found} end)
+
+    msg = %{"payload" => %{"tenant_id" => tenant, "user_id" => user}}
+
+    assert {:ok, context} = SessionContextHandler.handle_gather_context(msg)
+    assert context["session_id"] == "last-used"
+    assert context["scene_description"] == "the alley we were in"
+  end
+
+  defp window(tenant, user, overrides) do
+    Map.merge(
+      %{
+        "id" => "00000000-0000-0000-0000-0000000000cc",
+        "tenant_id" => tenant,
+        "user_id" => user,
+        "status" => "active",
+        "scene_description" => "somewhere",
+        "metadata" => %{},
+        "created_at" => "2026-09-01T09:00:00",
+        "updated_at" => "2026-09-01T09:00:00"
+      },
+      overrides
+    )
+  end
+
   test "gather_context returns error when no active session found" do
     tenant = "00000000-0000-0000-0000-000000000099"
     user = "00000000-0000-0000-0000-0000000000aa"

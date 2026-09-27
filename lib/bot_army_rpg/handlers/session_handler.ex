@@ -2,6 +2,8 @@ defmodule BotArmyRpg.Handlers.SessionHandler do
   @moduledoc "Handles NATS messages for RPG session create, get, and update."
   require Logger
 
+  alias BotArmyRpg.Sessions
+
   defp session_store do
     Application.get_env(:bot_army_rpg, :session_store, BotArmyRpg.SessionStore)
   end
@@ -12,13 +14,72 @@ defmodule BotArmyRpg.Handlers.SessionHandler do
 
   def handle_start(message) do
     params = message["payload"] || message
+    {tenant_id, user_id} = identity_of(message, params)
 
+    case open_window(params, tenant_id, user_id) do
+      {:ok, session} ->
+        {:ok, session}
+
+      {:error, reason} ->
+        Logger.error("[SessionHandler] Start failed: #{inspect(reason)}")
+        {:error, reason}
+    end
+  end
+
+  @doc """
+  Enter the window this identity is in — opening one if there is none.
+
+  `rpg.session.start` **always** begins a new window, and its name says so; that is
+  how a pile of open windows grew up behind every adventure. This is the subject for
+  the other meaning: *the conversation I am in*. It answers with the window
+  `BotArmyRpg.Sessions.active_for/2` picks — the one this identity touched most
+  recently — or opens one from these same params when there is none.
+
+  The answer is `{"session" => …, "opened" => boolean}`, nested rather than a field
+  inside the session: *whether this call created the window* is a fact about the
+  reply, and a session that carried it would be claiming something about the call
+  that produced it. `rpg.session.started` is published only when a window was really
+  opened — an event has to describe an act that happened.
+  """
+  def handle_open(message) do
+    params = message["payload"] || message
+    {tenant_id, user_id} = identity_of(message, params)
+
+    case Sessions.active_for(tenant_id, user_id) do
+      {:ok, session} ->
+        {:ok, %{"session" => session, "opened" => false}}
+
+      {:error, :no_active_session} ->
+        case open_window(params, tenant_id, user_id) do
+          {:ok, session} ->
+            {:ok, %{"session" => session, "opened" => true}}
+
+          {:error, reason} ->
+            Logger.error("[SessionHandler] Open failed: #{inspect(reason)}")
+            {:error, reason}
+        end
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  # Whose window, and in whose house. One reader for the two subjects that open a
+  # window, so "who is asking" cannot drift between them.
+  defp identity_of(message, params) do
     tenant_id =
       params["tenant_id"] || message["tenant_id"] ||
         BotArmyLibraryRuntime.Tenant.default_tenant_id()
 
-    user_id = BotArmyRpg.Identity.resolve_user_id(message, tenant_id)
+    {tenant_id, BotArmyRpg.Identity.resolve_user_id(message, tenant_id)}
+  end
 
+  # The act of opening a window, in one place: `rpg.session.start` always does this,
+  # and `rpg.session.open` does it only when there is none. The event is published
+  # here because this is where the window really came into being — a caller that
+  # merely found one must not look like it started something. Each caller names its
+  # own failure, so a log line still says which subject was asked.
+  defp open_window(params, tenant_id, user_id) do
     payload =
       Map.merge(params, %{
         "tenant_id" => tenant_id,
@@ -38,7 +99,6 @@ defmodule BotArmyRpg.Handlers.SessionHandler do
         {:ok, session}
 
       {:error, reason} ->
-        Logger.error("[SessionHandler] Start failed: #{inspect(reason)}")
         {:error, reason}
     end
   end

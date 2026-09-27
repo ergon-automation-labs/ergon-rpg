@@ -16,6 +16,16 @@ defmodule BotArmyRpg.SessionStore do
     do: GenServer.call(@server, {:update, tenant_id, session_id, payload})
 
   def list(tenant_id), do: GenServer.call(@server, {:list, tenant_id})
+
+  @doc """
+  Move a session's `updated_at` to now, without changing anything else about it.
+
+  A turn is the window being used, and the window an identity means is the one it
+  touched most recently — so a turn has to move that clock, or "most recently
+  updated" only ever means "last one whose metadata changed" and the phone shows
+  whichever window happened to be created last.
+  """
+  def touch(tenant_id, session_id), do: GenServer.call(@server, {:touch, tenant_id, session_id})
   def clear, do: GenServer.call(@server, :clear)
 
   @impl true
@@ -167,6 +177,16 @@ defmodule BotArmyRpg.SessionStore do
   end
 
   @impl true
+  def handle_call({:touch, tenant_id, session_id}, _from, state) do
+    with {:ok, session} <- locked(state, tenant_id, session_id),
+         {:ok, touched} <- bump_updated_at(session, session_id) do
+      {:reply, {:ok, touched}, Map.put(state, session_id, touched)}
+    else
+      {:error, reason} -> {:reply, {:error, reason}, state}
+    end
+  end
+
+  @impl true
   def handle_call(:clear, _from, _state) do
     BotArmyRpg.Repo.delete_all(BotArmyRpg.Schemas.Session)
     {:reply, :ok, %{}}
@@ -215,5 +235,32 @@ defmodule BotArmyRpg.SessionStore do
     Enum.reduce(opts, msg, fn {key, value}, acc ->
       String.replace(acc, "%{#{key}}", to_string(value))
     end)
+  end
+
+  # A window that is not in this tenant's list, or not here at all, is the same nothing
+  # to a caller: `:not_found`, never someone else's window.
+  defp locked(state, tenant_id, session_id) do
+    case Map.get(state, session_id) do
+      %{"tenant_id" => ^tenant_id} = session -> {:ok, session}
+      _absent_or_foreign -> {:error, :not_found}
+    end
+  end
+
+  # Truncated to the second because that is the column's precision: keeping microseconds
+  # only here would leave the in-memory copy and the row disagreeing about the clock that
+  # decides which window an identity is in.
+  defp bump_updated_at(session, session_id) do
+    now = NaiveDateTime.utc_now() |> NaiveDateTime.truncate(:second)
+
+    case BotArmyRpg.Repo.get(BotArmyRpg.Schemas.Session, Ecto.UUID.cast!(session_id)) do
+      nil ->
+        {:error, :not_found}
+
+      db_session ->
+        case BotArmyRpg.Repo.update(Ecto.Changeset.change(db_session, updated_at: now)) do
+          {:ok, _row} -> {:ok, Map.put(session, "updated_at", NaiveDateTime.to_iso8601(now))}
+          {:error, reason} -> {:error, reason}
+        end
+    end
   end
 end

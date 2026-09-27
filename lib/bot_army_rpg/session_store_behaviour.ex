@@ -6,5 +6,7 @@ defmodule BotArmyRpg.SessionStoreBehaviour do
   @callback update(tenant_id :: String.t(), session_id :: String.t(), payload :: map()) ::
               {:ok, map()} | {:error, atom()}
   @callback list(tenant_id :: String.t()) :: {:ok, list(map())}
+  @callback touch(tenant_id :: String.t(), session_id :: String.t()) ::
+              {:ok, map()} | {:error, atom()}
   @callback clear() :: :ok
 end

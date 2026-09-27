@@ -123,6 +123,11 @@ defmodule BotArmyRpg.NATS.Consumer do
     },
     %{subject: "rpg.session.start", type: :request_reply, description: "Start a new RPG session"},
     %{
+      subject: "rpg.session.open",
+      type: :request_reply,
+      description: "Enter the open window, opening one if there is none"
+    },
+    %{
       subject: "rpg.session.resume",
       type: :request_reply,
       description: "Resume a paused RPG session"
@@ -423,6 +428,9 @@ defmodule BotArmyRpg.NATS.Consumer do
 
         "rpg.session.start" ->
           SessionHandler.handle_start(body)
+
+        "rpg.session.open" ->
+          SessionHandler.handle_open(body)
 
         "rpg.session.resume" ->
           SessionHandler.handle_resume(body)
