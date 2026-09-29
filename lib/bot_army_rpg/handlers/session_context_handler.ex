@@ -266,6 +266,14 @@ defmodule BotArmyRpg.Handlers.SessionContextHandler do
     end
   end
 
+  # A party is keyed by {tenant_id, user_id}. A character with no user — the live
+  # `gtd_bot` character carries `user_id: nil` (2026-09-29) — has no party for the read
+  # to report, and `nil` is not a key the store answers for: asking it anyway raised,
+  # which took the Consumer process down with it and left the caller with silence.
+  # The read reports no party; it does not manufacture one out of a question the store
+  # was never able to answer.
+  defp fetch_party(_tenant_id, nil), do: {:ok, %{}}
+
   defp fetch_party(tenant_id, user_id) do
     case party_store().get_party(tenant_id, user_id) do
       {:ok, party} -> {:ok, party}

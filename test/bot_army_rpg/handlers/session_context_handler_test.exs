@@ -550,4 +550,48 @@ defmodule BotArmyRpg.Handlers.SessionContextHandlerTest do
 
     assert {:error, :no_active_session} = SessionContextHandler.handle_adventure_context(msg)
   end
+
+  test "handle_adventure_context answers when the character has no user — a party it cannot ask about is not a party it reports" do
+    tenant = "00000000-0000-0000-0000-000000000099"
+    bot_id = "gtd_bot"
+
+    # The live case (2026-09-29): `gtd_bot`'s character carries `user_id: nil`, and the
+    # session it plays in has `user_id: nil` too. The party store's key is
+    # {tenant_id, user_id} and `nil` is not a key it answers for, so asking it anyway
+    # did not report an absent party — it raised, which took the Consumer process down
+    # with it and left the caller with no reply at all. Four 13s timeouts in a row,
+    # each one a fresh crash.
+    Mox.expect(BotArmyRpg.CharacterStoreMock, :get_by_bot_id, fn ^tenant, ^bot_id ->
+      {:ok, %{"id" => "char-1", "name" => "The Lorekeeper", "user_id" => nil}}
+    end)
+
+    Mox.expect(BotArmyRpg.SessionStoreMock, :list, fn ^tenant ->
+      {:ok,
+       [
+         %{
+           "id" => "sess-null-user",
+           "tenant_id" => tenant,
+           "user_id" => nil,
+           "status" => "active",
+           "scene_description" => "probe"
+         }
+       ]}
+    end)
+
+    Mox.expect(BotArmyRpg.SceneFactStoreMock, :list_for_session, fn ^tenant, "sess-null-user" ->
+      {:ok, []}
+    end)
+
+    Mox.expect(BotArmyRpg.ThemeStoreMock, :get_current, fn ^tenant -> {:error, :not_found} end)
+
+    # No PartyStoreMock expectation on purpose: with no user there is no party to look
+    # up, so the store must not be asked at all. Mox fails this test if it is.
+
+    msg = %{"tenant_id" => tenant, "bot_id" => bot_id}
+
+    assert {:ok, context} = SessionContextHandler.handle_adventure_context(msg)
+    assert context["character"]["name"] == "The Lorekeeper"
+    assert context["session"]["scene_description"] == "probe"
+    assert context["party"] == %{}
+  end
 end
