@@ -22,7 +22,7 @@ defmodule BotArmyRpg.Handlers.CampaignHandler do
     gtd_project_id = params["gtd_project_id"]
     theme_snapshot = params["theme_snapshot"]
 
-    with :ok <- validate_uuid(gtd_project_id),
+    with :ok <- validate_string(gtd_project_id, "uuid"),
          :ok <- validate_map(theme_snapshot),
          {:ok, campaign} <- insert_campaign(tenant_id, gtd_project_id, theme_snapshot) do
       {:ok, campaign}
@@ -54,7 +54,7 @@ defmodule BotArmyRpg.Handlers.CampaignHandler do
     params = message["payload"] || message
     rpg_campaign_id = params["rpg_campaign_id"]
 
-    with :ok <- validate_uuid(rpg_campaign_id),
+    with :ok <- validate_string(rpg_campaign_id, "uuid"),
          {:ok, campaign} <- get_campaign(rpg_campaign_id),
          events <- xp_event_store().handle_get_events(rpg_campaign_id),
          scorecard <- build_scorecard(campaign, events),
@@ -71,7 +71,7 @@ defmodule BotArmyRpg.Handlers.CampaignHandler do
     params = message["payload"] || message
     rpg_campaign_id = params["rpg_campaign_id"]
 
-    with :ok <- validate_uuid(rpg_campaign_id) do
+    with :ok <- validate_string(rpg_campaign_id, "uuid") do
       roster = campaign_roster_store().handle_get_roster(rpg_campaign_id)
       {:ok, %{"roster" => roster}}
     end
@@ -84,9 +84,9 @@ defmodule BotArmyRpg.Handlers.CampaignHandler do
     npc_slug = params["npc_slug"]
     display_name = params["display_name"]
 
-    with :ok <- validate_uuid(rpg_campaign_id),
-         :ok <- validate_slug(npc_slug),
-         :ok <- validate_string(display_name) do
+    with :ok <- validate_string(rpg_campaign_id, "uuid"),
+         :ok <- validate_string(npc_slug, "slug"),
+         :ok <- validate_string(display_name, "string") do
       attrs =
         %{
           "tenant_id" => tenant_id,
@@ -112,11 +112,11 @@ defmodule BotArmyRpg.Handlers.CampaignHandler do
     delta = params["delta"]
     reason_code = params["reason_code"]
 
-    with :ok <- validate_uuid(rpg_campaign_id),
+    with :ok <- validate_string(rpg_campaign_id, "uuid"),
          :ok <- validate_inclusion(actor_kind, ["player", "npc"]),
-         :ok <- validate_string(actor_id),
+         :ok <- validate_string(actor_id, "string"),
          :ok <- validate_integer(delta),
-         :ok <- validate_string(reason_code) do
+         :ok <- validate_string(reason_code, "string") do
       attrs = %{
         "rpg_campaign_id" => rpg_campaign_id,
         "actor_kind" => actor_kind,
@@ -147,7 +147,7 @@ defmodule BotArmyRpg.Handlers.CampaignHandler do
           else: f
       end)
 
-    with :ok <- validate_uuid(rpg_campaign_id) do
+    with :ok <- validate_string(rpg_campaign_id, "uuid") do
       events = xp_event_store().handle_get_events(rpg_campaign_id, filters)
       {:ok, %{"events" => events, "per_actor" => rollup_by_actor(events)}}
     end
@@ -192,17 +192,16 @@ defmodule BotArmyRpg.Handlers.CampaignHandler do
     }
   end
 
-  defp validate_uuid(nil), do: {:error, "missing_uuid"}
-  defp validate_uuid(val) when is_binary(val), do: :ok
-  defp validate_uuid(_), do: {:error, "invalid_uuid"}
-
-  defp validate_slug(nil), do: {:error, "missing_slug"}
-  defp validate_slug(val) when is_binary(val), do: :ok
-  defp validate_slug(_), do: {:error, "invalid_slug"}
-
-  defp validate_string(nil), do: {:error, "missing_string"}
-  defp validate_string(val) when is_binary(val), do: :ok
-  defp validate_string(_), do: {:error, "invalid_string"}
+  # The domain is in the field name; the check is only "a string". Nothing here validates a
+  # uuid or a slug *shape* - an empty string passes - so a malformed id travels to the store
+  # and comes back as the store's own answer ("not found") instead of a refusal. This check
+  # used to be three copies named `validate_uuid/1`, `validate_slug/1` and
+  # `validate_string/1`; the first two promised a shape check that was never made. Enforcing
+  # a shape is a decision with wire consequences, so it belongs to whoever makes it - not to
+  # a function name that quietly assumes it.
+  defp validate_string(nil, field), do: {:error, "missing_#{field}"}
+  defp validate_string(val, _field) when is_binary(val), do: :ok
+  defp validate_string(_val, field), do: {:error, "invalid_#{field}"}
 
   defp validate_integer(nil), do: {:error, "missing_integer"}
   defp validate_integer(val) when is_integer(val), do: :ok

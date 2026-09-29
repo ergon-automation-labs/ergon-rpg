@@ -245,4 +245,17 @@ defmodule BotArmyRpg.Handlers.CampaignHappyPathTest do
                CampaignHandler.handle_xp_ledger(%{"rpg_campaign_id" => @campaign})
     end
   end
+
+  test "a malformed campaign id string is passed to the store, not refused" do
+    # The check behind every campaign route is that the id is a *string*, not that it is a
+    # uuid. Nothing in this bot checks the shape, so "not-a-uuid" travels to the store and
+    # the caller gets the store's own answer. The functions used to be named
+    # `validate_uuid/1` and `validate_slug/1`, which promised a shape check they never made.
+    # Refusing the shape here would change what every caller receives, so the honest move is
+    # to rename the check and pin the behaviour rather than quietly tighten it.
+    expect(BotArmyRpg.CampaignStoreMock, :handle_get_by_id, fn "not-a-uuid" -> nil end)
+
+    assert {:error, "campaign_not_found"} =
+             CampaignHandler.handle_get(%{"rpg_campaign_id" => "not-a-uuid"})
+  end
 end
