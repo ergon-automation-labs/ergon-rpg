@@ -179,4 +179,55 @@ defmodule BotArmyRpg.Handlers.CampaignHappyPathTest do
     assert attrs["delta"] == 25
     assert attrs["reason_code"] == "roleplay"
   end
+
+  describe "rpg.campaign.xp_ledger" do
+    test "no filters are asked for when none were given" do
+      expect(BotArmyRpg.XpEventStoreMock, :handle_get_events, fn @campaign, filters ->
+        # Mox matches the argument exactly, so a `%{actor_kind: nil}` here would fail.
+        assert filters == %{}
+
+        [
+          %{"actor_id" => "a1", "delta" => 100, "reason_code" => "quest"},
+          %{"actor_id" => "a1", "delta" => 25, "reason_code" => "roleplay"}
+        ]
+      end)
+
+      assert {:ok, %{"events" => events, "per_actor" => per_actor}} =
+               CampaignHandler.handle_xp_ledger(%{"rpg_campaign_id" => @campaign})
+
+      assert length(events) == 2
+      assert per_actor["a1"] == %{"total_xp" => 125, "event_count" => 2}
+    end
+
+    test "filters reach the store in the store's own vocabulary" do
+      # The store reads `Map.get(filters, :actor_kind)` — atom keys. A caller-side string
+      # key would be a silently ignored filter, so the vocabulary is pinned here.
+      expect(BotArmyRpg.XpEventStoreMock, :handle_get_events, fn @campaign, filters ->
+        assert filters == %{actor_kind: "player", actor_id: "a1"}
+        []
+      end)
+
+      assert {:ok, %{"events" => [], "per_actor" => %{}}} =
+               CampaignHandler.handle_xp_ledger(%{
+                 "rpg_campaign_id" => @campaign,
+                 "actor_kind" => "player",
+                 "actor_id" => "a1"
+               })
+    end
+
+    test "a filter present with a nil value is still passed on" do
+      # Presence decides, not truthiness (`Map.has_key?/2`): the nil reaches the store,
+      # whose own clause treats it as no filter at all.
+      expect(BotArmyRpg.XpEventStoreMock, :handle_get_events, fn @campaign, filters ->
+        assert filters == %{actor_kind: nil}
+        []
+      end)
+
+      assert {:ok, %{"events" => []}} =
+               CampaignHandler.handle_xp_ledger(%{
+                 "rpg_campaign_id" => @campaign,
+                 "actor_kind" => nil
+               })
+    end
+  end
 end

@@ -149,22 +149,7 @@ defmodule BotArmyRpg.Handlers.CampaignHandler do
 
     with :ok <- validate_uuid(rpg_campaign_id) do
       events = xp_event_store().handle_get_events(rpg_campaign_id, filters)
-
-      per_actor =
-        events
-        |> Enum.reduce(%{}, fn event, acc ->
-          actor_id = event["actor_id"]
-          delta = event["delta"]
-
-          Map.update(acc, actor_id, %{"total_xp" => delta, "event_count" => 1}, fn actor ->
-            %{
-              "total_xp" => actor["total_xp"] + delta,
-              "event_count" => actor["event_count"] + 1
-            }
-          end)
-        end)
-
-      {:ok, %{"events" => events, "per_actor" => per_actor}}
+      {:ok, %{"events" => events, "per_actor" => rollup_by_actor(events)}}
     end
   end
 
@@ -189,20 +174,6 @@ defmodule BotArmyRpg.Handlers.CampaignHandler do
   end
 
   defp build_scorecard(campaign, events) do
-    per_actor =
-      events
-      |> Enum.reduce(%{}, fn event, acc ->
-        actor_id = event["actor_id"]
-        delta = event["delta"]
-
-        Map.update(acc, actor_id, %{"total_xp" => delta, "event_count" => 1}, fn actor ->
-          %{
-            "total_xp" => actor["total_xp"] + delta,
-            "event_count" => actor["event_count"] + 1
-          }
-        end)
-      end)
-
     reason_codes =
       events
       |> Enum.reduce(%{}, fn event, acc ->
@@ -215,7 +186,7 @@ defmodule BotArmyRpg.Handlers.CampaignHandler do
         "started_at" => campaign["started_at"],
         "ended_at" => campaign["ended_at"]
       },
-      "actors" => per_actor,
+      "actors" => rollup_by_actor(events),
       "event_count" => length(events),
       "reason_codes" => reason_codes
     }
@@ -243,5 +214,23 @@ defmodule BotArmyRpg.Handlers.CampaignHandler do
 
   defp validate_inclusion(val, list) do
     if val in list, do: :ok, else: {:error, "invalid_value"}
+  end
+
+  # One rollup, two wire fields: `rpg.campaign.close` reports this map as "actors" and
+  # `rpg.campaign.xp_ledger` as "per_actor". The arithmetic used to exist twice — two
+  # chances to drift — so there is now one copy. Tests pin both field names, so a change
+  # that breaks either one has to break a test first.
+  defp rollup_by_actor(events) do
+    Enum.reduce(events, %{}, fn event, acc ->
+      actor_id = event["actor_id"]
+      delta = event["delta"]
+
+      Map.update(acc, actor_id, %{"total_xp" => delta, "event_count" => 1}, fn actor ->
+        %{
+          "total_xp" => actor["total_xp"] + delta,
+          "event_count" => actor["event_count"] + 1
+        }
+      end)
+    end)
   end
 end
