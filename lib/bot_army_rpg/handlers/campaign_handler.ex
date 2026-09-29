@@ -113,7 +113,7 @@ defmodule BotArmyRpg.Handlers.CampaignHandler do
     reason_code = params["reason_code"]
 
     with :ok <- validate_string(rpg_campaign_id, "uuid"),
-         :ok <- validate_inclusion(actor_kind, ["player", "npc"]),
+         :ok <- validate_inclusion(actor_kind, ["player", "npc"], "actor_kind"),
          :ok <- validate_string(actor_id, "string"),
          :ok <- validate_integer(delta),
          :ok <- validate_string(reason_code, "string") do
@@ -211,8 +211,13 @@ defmodule BotArmyRpg.Handlers.CampaignHandler do
   defp validate_map(val) when is_map(val), do: :ok
   defp validate_map(_), do: {:error, "invalid_map"}
 
-  defp validate_inclusion(val, list) do
-    if val in list, do: :ok, else: {:error, "invalid_value"}
+  # The field name carries the domain here too, so a refusal names the value that was wrong
+  # ("actor_kind") instead of the generic "invalid_value" - and a *missing* one is reported as
+  # missing rather than as invalid.
+  defp validate_inclusion(nil, _list, field), do: {:error, "missing_#{field}"}
+
+  defp validate_inclusion(val, list, field) do
+    if val in list, do: :ok, else: {:error, "invalid_#{field}"}
   end
 
   # One rollup, two wire fields: `rpg.campaign.close` reports this map as "actors" and

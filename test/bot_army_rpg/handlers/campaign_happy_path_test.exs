@@ -258,4 +258,27 @@ defmodule BotArmyRpg.Handlers.CampaignHappyPathTest do
     assert {:error, "campaign_not_found"} =
              CampaignHandler.handle_get(%{"rpg_campaign_id" => "not-a-uuid"})
   end
+
+  test "a store's changeset refusal is passed through unchanged" do
+    # The real store answers an invalid changeset with `{:error, changeset}`, and the handler
+    # returns whatever its store answered. So the wire refusal for such a payload is the
+    # *inspected changeset* rather than a named code - noisy, because it echoes the caller's
+    # own payload back, and reachable only after the changeset has already refused the write.
+    # Recorded, not endorsed: this test exists so that turning it into a named refusal is a
+    # visible decision with a test to change first.
+    invalid = BotArmyRpg.Schemas.XpEvent.changeset(%BotArmyRpg.Schemas.XpEvent{}, %{})
+
+    expect(BotArmyRpg.XpEventStoreMock, :handle_insert, fn _attrs -> {:error, invalid} end)
+
+    assert {:error, %Ecto.Changeset{} = refused} =
+             CampaignHandler.handle_xp_add(%{
+               "rpg_campaign_id" => @campaign,
+               "actor_kind" => "player",
+               "actor_id" => @campaign,
+               "delta" => 5,
+               "reason_code" => "quest"
+             })
+
+    refute refused.valid?
+  end
 end

@@ -6,9 +6,16 @@ defmodule BotArmyRpg.Schemas.XpEvent do
   @foreign_key_type Ecto.UUID
 
   schema "rpg_xp_events" do
+    # The column is a uuid (see the create-table migration) but this field was `:string`, so
+    # a non-uuid actor_id passed the changeset and reached Postgres, which raised
+    # invalid-input-syntax *inside the store's handle_call* - the caller got an exit and the
+    # store died, instead of a refusal. The field now says what the column says.
     field(:rpg_campaign_id, Ecto.UUID)
     field(:actor_kind, :string)
-    field(:actor_id, :string)
+    # Note there is no foreign key on the campaign id: a well-formed id that names no
+    # campaign is accepted here, so XP can outlive the campaign it was awarded in. Malformed
+    # ids are refused by the cast; *unknown* ids are not.
+    field(:actor_id, Ecto.UUID)
     field(:delta, :integer)
     field(:reason_code, :string)
     field(:tenant_id, Ecto.UUID)

@@ -113,11 +113,23 @@ defmodule BotArmyRpg.Handlers.CampaignHandlerTest do
   end
 
   describe "rpg.campaign.xp.add" do
-    test "an actor kind outside player/npc is refused" do
-      assert {:error, "invalid_value"} =
+    test "an actor kind outside player/npc is refused, and the refusal names the field" do
+      # This used to answer the generic "invalid_value", which tells a caller nothing about
+      # which value was wrong. The field name travels with the check now.
+      assert {:error, "invalid_actor_kind"} =
                CampaignHandler.handle_xp_add(%{
                  "rpg_campaign_id" => @uuid,
                  "actor_kind" => "goblin",
+                 "actor_id" => @uuid,
+                 "delta" => 5,
+                 "reason_code" => "quest"
+               })
+    end
+
+    test "a missing actor kind is refused as missing, not as invalid" do
+      assert {:error, "missing_actor_kind"} =
+               CampaignHandler.handle_xp_add(%{
+                 "rpg_campaign_id" => @uuid,
                  "actor_id" => @uuid,
                  "delta" => 5,
                  "reason_code" => "quest"
