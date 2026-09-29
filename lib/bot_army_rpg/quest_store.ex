@@ -1,4 +1,5 @@
 defmodule BotArmyRpg.QuestStore do
+  @behaviour BotArmyRpg.QuestStoreBehaviour
   @moduledoc """
   In-memory quest store with database persistence.
 
@@ -15,22 +16,27 @@ defmodule BotArmyRpg.QuestStore do
     GenServer.start_link(__MODULE__, opts, name: @server)
   end
 
+  @impl true
   def create(character_id, quest_data) when is_binary(character_id) and is_map(quest_data) do
     GenServer.call(@server, {:create, character_id, quest_data})
   end
 
+  @impl true
   def get(character_id, quest_id) when is_binary(character_id) and is_binary(quest_id) do
     GenServer.call(@server, {:get, character_id, quest_id})
   end
 
+  @impl true
   def list_active(character_id) when is_binary(character_id) do
     GenServer.call(@server, {:list_active, character_id})
   end
 
+  @impl true
   def list_all(character_id) when is_binary(character_id) do
     GenServer.call(@server, {:list_all, character_id})
   end
 
+  @impl true
   def update(character_id, quest_id, updates) when is_map(updates) do
     GenServer.call(@server, {:update, character_id, quest_id, updates})
   end

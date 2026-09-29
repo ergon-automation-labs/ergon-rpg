@@ -1,4 +1,5 @@
 defmodule BotArmyRpg.CampaignStore do
+  @behaviour BotArmyRpg.CampaignStoreBehaviour
   @moduledoc "In-memory + Ecto store for TTRPG campaign metadata and state."
   use GenServer
   require Logger
@@ -9,6 +10,7 @@ defmodule BotArmyRpg.CampaignStore do
     GenServer.start_link(__MODULE__, opts, name: __MODULE__)
   end
 
+  @impl true
   def init(_opts) do
     campaigns =
       try do
@@ -21,26 +23,32 @@ defmodule BotArmyRpg.CampaignStore do
     {:ok, state}
   end
 
+  @impl true
   def handle_insert(attrs) do
     GenServer.call(__MODULE__, {:insert, attrs})
   end
 
+  @impl true
   def handle_get_by_project(gtd_project_id) do
     GenServer.call(__MODULE__, {:get_by_project, gtd_project_id})
   end
 
+  @impl true
   def handle_get_by_id(rpg_campaign_id) do
     GenServer.call(__MODULE__, {:get_by_id, rpg_campaign_id})
   end
 
+  @impl true
   def handle_update(rpg_campaign_id, attrs) do
     GenServer.call(__MODULE__, {:update, rpg_campaign_id, attrs})
   end
 
+  @impl true
   def handle_list_active do
     GenServer.call(__MODULE__, :list_active)
   end
 
+  @impl true
   def handle_call({:insert, attrs}, _from, state) do
     case Repo.insert(Campaign.changeset(%Campaign{}, attrs)) do
       {:ok, campaign} ->

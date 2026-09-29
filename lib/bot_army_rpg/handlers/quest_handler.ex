@@ -88,16 +88,15 @@ defmodule BotArmyRpg.Handlers.QuestHandler do
         character_id = character["id"]
         include_completed = Map.get(params, "include_completed", false)
 
-        quests =
-          if include_completed do
-            {:ok, quests} = quest_store().list_all(character_id)
-            quests
-          else
-            {:ok, quests} = quest_store().list_active(character_id)
-            quests
-          end
-
-        {:ok, quests}
+        # A store that cannot answer is not an empty quest log: an unreported read has to
+        # look unreported, never empty. The old hard match (`{:ok, quests} = ...`) turned a
+        # store error into a MatchError, and a raise in a handler takes the whole Consumer
+        # down — every route silent until restart.
+        if include_completed do
+          quest_store().list_all(character_id)
+        else
+          quest_store().list_active(character_id)
+        end
 
       {:error, _} ->
         {:error, :character_not_found}
@@ -180,7 +179,9 @@ defmodule BotArmyRpg.Handlers.QuestHandler do
       "tenant_id" => tenant_id
     }
 
-    case BotArmyLibraryRuntime.NATS.Publisher.request("bridge.task.list", payload, timeout_ms: 3000) do
+    case BotArmyLibraryRuntime.NATS.Publisher.request("bridge.task.list", payload,
+           timeout_ms: 3000
+         ) do
       {:ok, %{"data" => tasks}} when is_list(tasks) and tasks != [] ->
         task = List.first(tasks)
         {:error, {:recon_required, Map.get(task, "id")}}

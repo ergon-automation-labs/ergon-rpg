@@ -1,4 +1,5 @@
 defmodule BotArmyRpg.CampaignRosterStore do
+  @behaviour BotArmyRpg.CampaignRosterStoreBehaviour
   @moduledoc "In-memory + Ecto store for campaign party rosters."
   use GenServer
   require Logger
@@ -9,6 +10,7 @@ defmodule BotArmyRpg.CampaignRosterStore do
     GenServer.start_link(__MODULE__, opts, name: __MODULE__)
   end
 
+  @impl true
   def init(_opts) do
     rosters =
       try do
@@ -21,14 +23,17 @@ defmodule BotArmyRpg.CampaignRosterStore do
     {:ok, state}
   end
 
+  @impl true
   def handle_get_roster(rpg_campaign_id) do
     GenServer.call(__MODULE__, {:get_roster, rpg_campaign_id})
   end
 
+  @impl true
   def handle_upsert(rpg_campaign_id, npc_slug, attrs) do
     GenServer.call(__MODULE__, {:upsert, rpg_campaign_id, npc_slug, attrs})
   end
 
+  @impl true
   def handle_call({:get_roster, rpg_campaign_id}, _from, state) do
     roster = Map.get(state, rpg_campaign_id, [])
     {:reply, roster, state}

@@ -1,4 +1,5 @@
 defmodule BotArmyRpg.XpEventStore do
+  @behaviour BotArmyRpg.XpEventStoreBehaviour
   @moduledoc "In-memory + Ecto store for XP gain and progression events."
   use GenServer
   require Logger
@@ -9,6 +10,7 @@ defmodule BotArmyRpg.XpEventStore do
     GenServer.start_link(__MODULE__, opts, name: __MODULE__)
   end
 
+  @impl true
   def init(_opts) do
     events =
       try do
@@ -21,14 +23,17 @@ defmodule BotArmyRpg.XpEventStore do
     {:ok, state}
   end
 
+  @impl true
   def handle_insert(attrs) do
     GenServer.call(__MODULE__, {:insert, attrs})
   end
 
+  @impl true
   def handle_get_events(rpg_campaign_id, filters \\ %{}) do
     GenServer.call(__MODULE__, {:get_events, rpg_campaign_id, filters})
   end
 
+  @impl true
   def handle_call({:insert, attrs}, _from, state) do
     case Repo.insert(XpEvent.changeset(%XpEvent{}, attrs)) do
       {:ok, event} ->

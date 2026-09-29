@@ -1,7 +1,19 @@
 defmodule BotArmyRpg.Handlers.CampaignHandler do
   @moduledoc "Handles NATS messages for campaign start, update, and lifecycle."
   require Logger
-  alias BotArmyRpg.{CampaignStore, XpEventStore, CampaignRosterStore}
+  # Resolved at call time, not at compile time: a handler that names its store module
+  # directly cannot be tested without a database.
+  defp campaign_store do
+    Application.get_env(:bot_army_rpg, :campaign_store, BotArmyRpg.CampaignStore)
+  end
+
+  defp xp_event_store do
+    Application.get_env(:bot_army_rpg, :xp_event_store, BotArmyRpg.XpEventStore)
+  end
+
+  defp campaign_roster_store do
+    Application.get_env(:bot_army_rpg, :campaign_roster_store, BotArmyRpg.CampaignRosterStore)
+  end
 
   def handle_start(message) do
     params = message["payload"] || message
@@ -22,13 +34,13 @@ defmodule BotArmyRpg.Handlers.CampaignHandler do
 
     case {params["gtd_project_id"], params["rpg_campaign_id"]} do
       {project_id, nil} when is_binary(project_id) ->
-        case CampaignStore.handle_get_by_project(project_id) do
+        case campaign_store().handle_get_by_project(project_id) do
           nil -> {:error, "campaign_not_found"}
           campaign -> {:ok, campaign}
         end
 
       {nil, campaign_id} when is_binary(campaign_id) ->
-        case CampaignStore.handle_get_by_id(campaign_id) do
+        case campaign_store().handle_get_by_id(campaign_id) do
           nil -> {:error, "campaign_not_found"}
           campaign -> {:ok, campaign}
         end
@@ -44,10 +56,10 @@ defmodule BotArmyRpg.Handlers.CampaignHandler do
 
     with :ok <- validate_uuid(rpg_campaign_id),
          {:ok, campaign} <- get_campaign(rpg_campaign_id),
-         events <- XpEventStore.handle_get_events(rpg_campaign_id),
+         events <- xp_event_store().handle_get_events(rpg_campaign_id),
          scorecard <- build_scorecard(campaign, events),
          {:ok, updated} <-
-           CampaignStore.handle_update(rpg_campaign_id, %{
+           campaign_store().handle_update(rpg_campaign_id, %{
              status: "completed",
              ended_at: DateTime.utc_now()
            }) do
@@ -60,7 +72,7 @@ defmodule BotArmyRpg.Handlers.CampaignHandler do
     rpg_campaign_id = params["rpg_campaign_id"]
 
     with :ok <- validate_uuid(rpg_campaign_id) do
-      roster = CampaignRosterStore.handle_get_roster(rpg_campaign_id)
+      roster = campaign_roster_store().handle_get_roster(rpg_campaign_id)
       {:ok, %{"roster" => roster}}
     end
   end
@@ -87,7 +99,7 @@ defmodule BotArmyRpg.Handlers.CampaignHandler do
             else: a
         end)
 
-      CampaignRosterStore.handle_upsert(rpg_campaign_id, npc_slug, attrs)
+      campaign_roster_store().handle_upsert(rpg_campaign_id, npc_slug, attrs)
     end
   end
 
@@ -114,7 +126,7 @@ defmodule BotArmyRpg.Handlers.CampaignHandler do
         "tenant_id" => tenant_id
       }
 
-      XpEventStore.handle_insert(attrs)
+      xp_event_store().handle_insert(attrs)
     end
   end
 
@@ -136,7 +148,7 @@ defmodule BotArmyRpg.Handlers.CampaignHandler do
       end)
 
     with :ok <- validate_uuid(rpg_campaign_id) do
-      events = XpEventStore.handle_get_events(rpg_campaign_id, filters)
+      events = xp_event_store().handle_get_events(rpg_campaign_id, filters)
 
       per_actor =
         events
@@ -166,11 +178,11 @@ defmodule BotArmyRpg.Handlers.CampaignHandler do
       "started_at" => DateTime.utc_now()
     }
 
-    CampaignStore.handle_insert(attrs)
+    campaign_store().handle_insert(attrs)
   end
 
   defp get_campaign(rpg_campaign_id) do
-    case CampaignStore.handle_get_by_id(rpg_campaign_id) do
+    case campaign_store().handle_get_by_id(rpg_campaign_id) do
       nil -> {:error, "campaign_not_found"}
       campaign -> {:ok, campaign}
     end
