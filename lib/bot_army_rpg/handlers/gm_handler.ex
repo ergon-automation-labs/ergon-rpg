@@ -173,6 +173,7 @@ defmodule BotArmyRpg.Handlers.GMHandler do
     session_id = params["session_id"]
 
     with {:ok, session} <- session_store().get(tenant_id, session_id),
+         :ok <- require_session_active(session),
          {:ok, theme} <- theme_store().get_current(tenant_id),
          {:ok, facts} <- scene_fact_store().list_for_session(tenant_id, session_id) do
       scene = params["scene_description"] || session["scene_description"]
@@ -377,7 +378,8 @@ defmodule BotArmyRpg.Handlers.GMHandler do
   end
 
   defp resolve_tenant_id(params, message) do
-    params["tenant_id"] || message["tenant_id"] || BotArmyLibraryRuntime.Tenant.default_tenant_id()
+    params["tenant_id"] || message["tenant_id"] ||
+      BotArmyLibraryRuntime.Tenant.default_tenant_id()
   end
 
   defp require_session_active(%{"status" => "active"}), do: :ok
