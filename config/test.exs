@@ -21,3 +21,8 @@ config :bot_army_library_runtime, :nats,
   ping_interval: 5000,
   max_reconnect_attempts: 3,
   reconnect_delay_ms: 100
+
+# The application asks this at runtime to decide which children to start (see
+# BotArmyRpg.Application.test_env?/0). It must not be inferred from MIX_ENV at compile
+# time: a test build compiled under another environment would start the stores.
+config :bot_army_rpg, env: :test

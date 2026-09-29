@@ -3,7 +3,19 @@ defmodule BotArmyRpg.Application do
   use Application
 
   @version Mix.Project.config()[:version]
-  @env String.to_atom(System.get_env("MIX_ENV") || "prod")
+
+  # Which children to start is a question about the running system, so it is asked at
+  # call time and answered by config.
+  #
+  # It used to be `@env String.to_atom(System.get_env("MIX_ENV") || "prod")` — a
+  # COMPILE-time read of an OS environment variable. `mix test` compiles into
+  # `_build/test` and then runs whatever text is in there, so a test build compiled while
+  # `MIX_ENV` happened to be unset carried `:prod` and started the durable stores, the
+  # Repo and the NATS Consumer *inside the test run*. Nothing in the source showed it; it
+  # depended on which shell last compiled the tree. The push hook caught it on
+  # 2026-09-29 as six `{:already_started, pid}` failures in the party store tests: the
+  # application had started the very store the test wanted to supervise.
+  defp test_env?, do: Application.get_env(:bot_army_rpg, :env, :prod) == :test
 
   @impl true
   def start(_type, _args) do
@@ -11,11 +23,11 @@ defmodule BotArmyRpg.Application do
       {BotArmyRpg.LoreKeeper, []}
     ]
 
-    children = if @env == :test, do: children, else: children ++ [{BotArmyRpg.Repo, []}]
+    children = if test_env?(), do: children, else: children ++ [{BotArmyRpg.Repo, []}]
 
     children =
       children ++
-        if @env == :test,
+        if test_env?(),
           do: [],
           else: [
             {BotArmyRpg.IdentityBindingStore, []},
@@ -37,7 +49,7 @@ defmodule BotArmyRpg.Application do
 
     children =
       children ++
-        if @env == :test,
+        if test_env?(),
           do: [],
           else:
             [
