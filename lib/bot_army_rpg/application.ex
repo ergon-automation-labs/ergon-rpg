@@ -26,7 +26,13 @@ defmodule BotArmyRpg.Application do
             {BotArmyRpg.ThemeStore, []},
             {BotArmyRpg.CampaignStore, []},
             {BotArmyRpg.XpEventStore, []},
-            {BotArmyRpg.CampaignRosterStore, []}
+            {BotArmyRpg.CampaignRosterStore, []},
+            # The party the context reads. It was never in this list, so every call to
+            # `rpg.adventure.context.query` reached a `GenServer.call` on a name with no
+            # process behind it, raised, and — because a handler that raises never
+            # replies — left the caller waiting instead of answering (measured live
+            # 2026-09-29: 12s, no reply).
+            {BotArmyRpg.PartyStore, []}
           ]
 
     children =

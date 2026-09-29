@@ -25,14 +25,17 @@ defmodule BotArmyRpg.PartyStore do
     GenServer.call(@server, {:get_party, tenant_id, user_id})
   end
 
+  @impl true
   def add_member(tenant_id, user_id, member_data) when is_map(member_data) do
     GenServer.call(@server, {:add_member, tenant_id, user_id, member_data})
   end
 
+  @impl true
   def remove_member(tenant_id, user_id, character_id) when is_binary(character_id) do
     GenServer.call(@server, {:remove_member, tenant_id, user_id, character_id})
   end
 
+  @impl true
   def auto_populate(tenant_id, user_id) when is_binary(tenant_id) and is_binary(user_id) do
     GenServer.call(@server, {:auto_populate, tenant_id, user_id}, 15_000)
   end
@@ -61,7 +64,7 @@ defmodule BotArmyRpg.PartyStore do
   @impl true
   def handle_call({:add_member, tenant_id, user_id, member_data}, _from, state) do
     key = {tenant_id, user_id}
-    party = Map.get(state, key, new_party())
+    party = Map.get(state, key, blank_party())
 
     character_id = member_data["character_id"]
     already_member = Enum.any?(party["members"], &(&1["character_id"] == character_id))
@@ -112,7 +115,7 @@ defmodule BotArmyRpg.PartyStore do
   @impl true
   def handle_call({:auto_populate, tenant_id, user_id}, _from, state) do
     key = {tenant_id, user_id}
-    party = Map.get(state, key, new_party())
+    party = Map.get(state, key, blank_party())
 
     bot_ids = known_bot_ids()
 
@@ -165,7 +168,14 @@ defmodule BotArmyRpg.PartyStore do
     {:reply, {:ok, parties}, state}
   end
 
-  defp new_party do
+  @doc """
+  The party an identity has before it has one: named, and empty.
+
+  Public so that the one place that has to say "no party yet" says it with the same
+  name this store would have used, instead of spelling the party's name a second time
+  in a handler (N+56: a domain rule is not re-implemented in a second place).
+  """
+  def blank_party do
     %{
       "name" => "The Adventuring Party",
       "members" => [],

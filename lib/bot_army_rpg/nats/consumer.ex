@@ -13,19 +13,20 @@ defmodule BotArmyRpg.NATS.Consumer do
   alias BotArmyLibraryCore.NATS.Decoder
 
   alias BotArmyRpg.Handlers.{
-    CharacterHandler,
     CampaignHandler,
-    SessionHandler,
-    QuestHandler,
-    SceneFactHandler,
-    LootHandler,
-    RollHandler,
-    ThemeHandler,
+    CharacterHandler,
     GMHandler,
-    SessionContextHandler,
-    WorldSnapshotHandler,
     IdentityHandler,
-    LoreHandler
+    LootHandler,
+    LoreHandler,
+    PartyHandler,
+    QuestHandler,
+    RollHandler,
+    SceneFactHandler,
+    SessionContextHandler,
+    SessionHandler,
+    ThemeHandler,
+    WorldSnapshotHandler
   }
 
   @reconnect_delay_ms 5000
@@ -156,6 +157,31 @@ defmodule BotArmyRpg.NATS.Consumer do
       type: :request_reply,
       description: "Gather narrative context for a user session"
     },
+    # The party routes, registered 2026-09-29. `BotArmyRpg.Handlers.PartyHandler` had
+    # answered these four subjects since it was written, and nothing subscribed to any
+    # of them, so every party call was dropped by core NATS while the code sat in the
+    # tree looking finished.
+    #
+    # `rpg.party.auto_populate` is left out on purpose: its list of bot ids is a
+    # hardcoded guess (`gtd`, `llm`) that does not match the characters the fleet
+    # actually has (`gtd_bot`, `llm_bot`), so registering it today would recruit a
+    # parallel ghost of every companion. Register it once that list comes from the
+    # runtime registry.
+    %{
+      subject: "rpg.party.get",
+      type: :request_reply,
+      description: "Get an identity's party and companion roster"
+    },
+    %{
+      subject: "rpg.party.add",
+      type: :request_reply,
+      description: "Recruit a bot companion into the party"
+    },
+    %{
+      subject: "rpg.party.remove",
+      type: :request_reply,
+      description: "Take a companion out of the party"
+    },
     %{
       subject: "rpg.adventure.context.query",
       type: :request_reply,
@@ -253,6 +279,15 @@ defmodule BotArmyRpg.NATS.Consumer do
       description: "Complete a quest and award XP multiplier"
     }
   ]
+
+  @doc """
+  Every subject this consumer subscribes to.
+
+  Public so that registration is testable: a handler with no subscriber is a route
+  that silently drops its callers, and "somebody is listening" is not something a
+  reader can check by looking at the handler.
+  """
+  def subjects, do: @subjects
 
   def start_link(opts) do
     GenServer.start_link(__MODULE__, opts, name: __MODULE__)
@@ -440,6 +475,15 @@ defmodule BotArmyRpg.NATS.Consumer do
 
         "rpg.session.leave" ->
           SessionHandler.handle_leave(body)
+
+        "rpg.party.get" ->
+          PartyHandler.handle_get(body)
+
+        "rpg.party.add" ->
+          PartyHandler.handle_add(body)
+
+        "rpg.party.remove" ->
+          PartyHandler.handle_remove(body)
 
         "rpg.session.pause" ->
           SessionHandler.handle_pause(body)
