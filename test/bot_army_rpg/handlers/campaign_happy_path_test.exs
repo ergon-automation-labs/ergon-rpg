@@ -229,5 +229,20 @@ defmodule BotArmyRpg.Handlers.CampaignHappyPathTest do
                  "actor_kind" => nil
                })
     end
+
+    test "the ledger never asks whether the campaign exists" do
+      # `rpg.campaign.get` and `.close` answer "campaign_not_found" for an id they do not
+      # know; the ledger does not look the campaign up at all, so the same input that
+      # refuses elsewhere reads as an answered, empty ledger here. Measured on the wire
+      # against 0.15.41 and recorded rather than changed - tightening it would change a
+      # reason on a live route.
+      #
+      # No CampaignStoreMock expectation is set in this test, so Mox fails it if the
+      # handler ever starts consulting the campaign.
+      expect(BotArmyRpg.XpEventStoreMock, :handle_get_events, fn @campaign, %{} -> [] end)
+
+      assert {:ok, %{"events" => [], "per_actor" => %{}}} =
+               CampaignHandler.handle_xp_ledger(%{"rpg_campaign_id" => @campaign})
+    end
   end
 end
