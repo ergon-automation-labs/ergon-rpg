@@ -90,9 +90,17 @@ not end in `_test` (`BotArmyRpg.Test.PostgresHelper`), because its setup drops t
 schema:
 
 ```sh
-BOT_ARMY_RPG_DB_HOST=<host> BOT_ARMY_RPG_DB_PORT=<port> \
+# The database is not reachable from a laptop directly; tunnel to the node's
+# Postgres NodePort first, then point the suite at the tunnel:
+ssh -f -N -L 15432:127.0.0.1:30003 mini
+
+BOT_ARMY_RPG_DB_NAME=bot_army_rpg_test BOT_ARMY_RPG_DB_HOST=127.0.0.1 \
+  BOT_ARMY_RPG_DB_PORT=15432 \
   mix test --include integration test/bot_army_rpg/party_store_db_test.exs
 ```
+
+`config/test.exs` sets `pool_size: 2` for this: the migration runner holds a lock
+connection while it migrates, and a single-connection pool deadlocks it.
 
 ## Known limits
 

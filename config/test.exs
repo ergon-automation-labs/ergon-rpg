@@ -12,7 +12,9 @@ config :bot_army_rpg, BotArmyRpg.Repo,
   username: System.get_env("BOT_ARMY_RPG_DB_USER", "postgres"),
   password: System.get_env("BOT_ARMY_RPG_DB_PASSWORD", "postgres"),
   pool: Ecto.Adapters.SQL.Sandbox,
-  pool_size: 1
+  # Two, not one: the migration runner holds a lock connection while it migrates, so a
+  # single-connection pool deadlocks the `:integration` DB suites.
+  pool_size: 2
 
 test_nats_port = System.get_env("NATS_PORT", "4223") |> String.to_integer()
 
