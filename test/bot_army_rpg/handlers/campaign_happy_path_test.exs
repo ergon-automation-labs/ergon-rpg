@@ -20,6 +20,7 @@ defmodule BotArmyRpg.Handlers.CampaignHappyPathTest do
   import Mox
 
   alias BotArmyRpg.Handlers.CampaignHandler
+  alias BotArmyRpg.Schemas.XpEvent
 
   @project "00000000-0000-0000-0000-0000000000p1"
   @campaign "00000000-0000-0000-0000-0000000000c1"
@@ -266,7 +267,7 @@ defmodule BotArmyRpg.Handlers.CampaignHappyPathTest do
     # own payload back, and reachable only after the changeset has already refused the write.
     # Recorded, not endorsed: this test exists so that turning it into a named refusal is a
     # visible decision with a test to change first.
-    invalid = BotArmyRpg.Schemas.XpEvent.changeset(%BotArmyRpg.Schemas.XpEvent{}, %{})
+    invalid = XpEvent.changeset(%XpEvent{}, %{})
 
     expect(BotArmyRpg.XpEventStoreMock, :handle_insert, fn _attrs -> {:error, invalid} end)
 
