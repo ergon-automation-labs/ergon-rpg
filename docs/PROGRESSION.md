@@ -60,8 +60,9 @@ Open questions, deliberately not decided here:
 
 - **The away set is the whole tenant**, because the event carries no session. A
   session- or campaign-scoped set would need a session on the wire first.
-- **Away XP is not persisted as loot or as a separate ledger**, and there is no durable
-  `rpg_party_members` table.
+- **Away XP is not persisted as loot or as a separate ledger.** The party itself is
+  durable as of 0.15.46 — see [`docs/PARTY.md`](PARTY.md), whose table
+  (`rpg_party_members`) is the one this note used to say did not exist.
 
 ## Store write discipline (why awards used to do nothing)
 

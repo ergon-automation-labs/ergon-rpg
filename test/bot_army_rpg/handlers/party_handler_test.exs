@@ -14,6 +14,7 @@ defmodule BotArmyRpg.Handlers.PartyHandlerTest do
   import Mox
 
   alias BotArmyRpg.Handlers.PartyHandler
+  alias BotArmyRpg.NATS.Consumer
 
   @tenant "00000000-0000-0000-0000-000000000099"
   @user "00000000-0000-0000-0000-0000000000aa"
@@ -82,6 +83,25 @@ defmodule BotArmyRpg.Handlers.PartyHandlerTest do
       assert party["members"] == []
       assert party["message"] =~ "No party yet"
       assert party["name"] == "The Adventuring Party"
+    end
+
+    test "the way out it names is a route that answers" do
+      # This message used to point at `rpg.party.auto_populate`, which is implemented but
+      # deliberately not registered: an instruction that led nowhere, in the one place a
+      # caller has nothing else to go on. The route it names has to be one that answers.
+      Mox.expect(BotArmyRpg.PartyStoreMock, :get_party, fn @tenant, @user ->
+        {:error, :not_found}
+      end)
+
+      assert {:ok, party} =
+               PartyHandler.handle_get(%{"tenant_id" => @tenant, "user_id" => @user})
+
+      assert party["message"] =~ "rpg.party.add"
+      refute party["message"] =~ "auto_populate"
+
+      registered = Consumer.subjects() |> Enum.map(& &1.subject)
+      assert "rpg.party.add" in registered
+      refute "rpg.party.auto_populate" in registered
     end
 
     test "a party that could not be read is refused, not answered with an empty party" do

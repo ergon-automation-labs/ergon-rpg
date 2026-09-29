@@ -1,0 +1,120 @@
+defmodule BotArmyRpg.Test.FakePartyRepo do
+  @moduledoc """
+  A party table that lives in ETS, with either half of the database able to fail.
+
+  `BotArmyRpg.PartyRepo` is the only thing in the store that speaks to the party's
+  table, and it speaks four plain functions, so a stand-in answers those four and
+  nothing else. This
+  one is not a fake Ecto: it runs the real changeset (validation is not a database
+  feature) and it emulates the one rule a database owns, the unique membership.
+
+  The two switches exist because a failed read and a failed write are different events,
+  and the store has to answer them differently: a read that fails may never be reported
+  as "no party yet", and a write that fails may not leave a member behind. One stand-in
+  with a switch can produce each on its own; two stand-ins that each raise everywhere
+  could not show the second.
+
+  It cannot prove a query is *valid* — `party_store_db_test.exs` does that against real
+  Postgres. It can prove what the store does with the answers, on every `mix test`.
+  """
+
+  alias BotArmyRpg.PartyRepo
+  alias BotArmyRpg.Schemas.PartyMember
+
+  @table :fake_party_repo
+  @broken_reads :fake_party_repo_reads
+  @broken_writes :fake_party_repo_writes
+
+  @doc "An empty table, and both halves working."
+  def reset do
+    if :ets.whereis(@table) != :undefined, do: :ets.delete(@table)
+    :ets.new(@table, [:named_table, :public, :set, read_concurrency: true])
+    mend()
+  end
+
+  @doc "Both halves working again. Leaves the members alone."
+  def mend do
+    :persistent_term.erase(@broken_reads)
+    :persistent_term.erase(@broken_writes)
+    :ok
+  end
+
+  def break_reads, do: :persistent_term.put(@broken_reads, true)
+  def break_writes, do: :persistent_term.put(@broken_writes, true)
+
+  def members(tenant_id, user_id) do
+    down_if_broken(@broken_reads, "read the party")
+
+    rows()
+    |> Enum.filter(&(&1.tenant_id == tenant_id and &1.user_id == user_id))
+    |> oldest_first()
+    |> Enum.map(&PartyRepo.to_member/1)
+  end
+
+  def all_for_tenant(tenant_id) do
+    down_if_broken(@broken_reads, "list the tenant's parties")
+
+    rows()
+    |> Enum.filter(&(&1.tenant_id == tenant_id))
+    |> oldest_first()
+    |> Enum.map(&Map.put(PartyRepo.to_member(&1), "user_id", &1.user_id))
+  end
+
+  def insert(attrs) do
+    down_if_broken(@broken_writes, "write a member")
+
+    changeset = PartyMember.changeset(%PartyMember{}, attrs)
+
+    cond do
+      not changeset.valid? ->
+        {:error, changeset}
+
+      member?(attrs[:tenant_id], attrs[:user_id], attrs[:character_id]) ->
+        # What the unique index would have said, in the shape the store looks for.
+        {:error,
+         Ecto.Changeset.add_error(changeset, :tenant_id, "has already been taken",
+           constraint: :unique
+         )}
+
+      true ->
+        row = changeset |> Ecto.Changeset.apply_changes() |> ensure_id()
+        :ets.insert(@table, {row.id, row})
+        {:ok, row}
+    end
+  end
+
+  def delete(tenant_id, user_id, character_id) do
+    down_if_broken(@broken_writes, "remove a member")
+
+    doomed =
+      rows()
+      |> Enum.filter(
+        &(&1.tenant_id == tenant_id and &1.user_id == user_id and
+            &1.character_id == character_id)
+      )
+
+    Enum.each(doomed, &:ets.delete(@table, &1.id))
+    {:ok, length(doomed)}
+  end
+
+  defp rows, do: :ets.tab2list(@table) |> Enum.map(&elem(&1, 1))
+
+  defp oldest_first(rows), do: Enum.sort_by(rows, fn row -> {row.joined_at, row.id} end)
+
+  defp ensure_id(row), do: %{row | id: row.id || Ecto.UUID.generate()}
+
+  defp member?(tenant_id, user_id, character_id) do
+    Enum.any?(rows(), fn row ->
+      row.tenant_id == tenant_id and row.user_id == user_id and
+        row.character_id == character_id
+    end)
+  end
+
+  defp down_if_broken(flag, what) do
+    if :persistent_term.get(flag, false) do
+      raise "the party database could not #{what}"
+    end
+
+    :ok
+  end
+end

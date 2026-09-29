@@ -14,6 +14,12 @@ defmodule BotArmyRpg.Handlers.PartyHandler do
   registered `auto_populate` would create a parallel ghost of every companion. See
   the note in `BotArmyRpg.NATS.Consumer`, where it would be registered.
 
+  That is also why "no party yet" no longer sends a caller to it: this handler used to
+  answer with a route nobody answers (`Use rpg.party.auto_populate ...`), which read as
+  an instruction and was a dead end. The way out it names is now `rpg.party.add`, the
+  recruitment route that is actually registered (pinned by a test that checks the named
+  subject against `BotArmyRpg.NATS.Consumer.subjects/0`).
+
   The store is read through `party_store/0` and never by naming `PartyStore` directly:
   the two are different questions — *which store* and *is there one* — and a handler
   that hardcodes the second cannot be tested with the first (the party routes answered
@@ -22,7 +28,7 @@ defmodule BotArmyRpg.Handlers.PartyHandler do
 
   require Logger
 
-  @no_party_message "No party yet. Use rpg.party.auto_populate to recruit your bot companions."
+  @no_party_message "No party yet. Use rpg.party.add to recruit a bot companion."
 
   defp party_store do
     Application.get_env(:bot_army_rpg, :party_store, BotArmyRpg.PartyStore)
