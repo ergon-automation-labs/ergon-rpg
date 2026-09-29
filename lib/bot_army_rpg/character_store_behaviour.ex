@@ -11,6 +11,8 @@ defmodule BotArmyRpg.CharacterStoreBehaviour do
               {:ok, map()} | {:error, atom()}
   @callback award_xp(tenant_id :: String.t(), user_id :: String.t(), xp_amount :: integer()) ::
               {:ok, map()} | {:error, atom()}
+  @callback award_xp_to_bot(tenant_id :: String.t(), bot_id :: String.t(), xp_amount :: integer()) ::
+              {:ok, map()} | {:error, atom()}
   @callback list(tenant_id :: String.t()) :: {:ok, list(map())}
   @callback clear() :: :ok
 end

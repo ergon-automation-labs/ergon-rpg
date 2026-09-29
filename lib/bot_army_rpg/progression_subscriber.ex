@@ -11,6 +11,7 @@ defmodule BotArmyRpg.ProgressionSubscriber do
 
   alias BotArmyRpg.CharacterStore
   alias BotArmyRpg.LootEngine
+  alias BotArmyRpg.Progression.Companions
 
   @reconnect_delay_ms 5_000
 
@@ -78,7 +79,8 @@ defmodule BotArmyRpg.ProgressionSubscriber do
 
     case BotArmyLibraryCore.NATS.Decoder.decode(msg.body) do
       {:ok, decoded} ->
-        tenant_id = Map.get(decoded, "tenant_id") || BotArmyLibraryRuntime.Tenant.default_tenant_id()
+        tenant_id =
+          Map.get(decoded, "tenant_id") || BotArmyLibraryRuntime.Tenant.default_tenant_id()
 
         case msg.topic do
           "events.gtd.task.created" ->
@@ -198,6 +200,10 @@ defmodule BotArmyRpg.ProgressionSubscriber do
           Logger.info(
             "[ProgressionSubscriber] #{xp_amount} XP awarded to #{user_id}, level #{new_level}#{if leveled_up, do: " (LEVEL UP!)", else: ""}#{if quest_bonus, do: " + quest bonus #{quest_bonus} XP", else: ""}"
           )
+
+          # The other track: the household keeps growing while this character is away, at a
+          # reduced share of the award above. It cannot touch that award - see Companions.
+          Companions.award_away(tenant_id, character, xp_amount)
 
         {:error, reason} ->
           Logger.warning(
