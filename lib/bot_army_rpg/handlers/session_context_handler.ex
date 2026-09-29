@@ -83,6 +83,12 @@ defmodule BotArmyRpg.Handlers.SessionContextHandler do
   # (N+26). A carry that cannot be read is reported as `nil` (unreported) and never as
   # `[]` (nothing came before), because those are different facts and the second one
   # would be invented. The carry never takes the window down: the window is the read.
+  #
+  # The carry takes *turns*, and `story_only: true` is where that is asked for: a note
+  # the machinery wrote is not something that happened in her story, and carrying one
+  # would put a test's words into her scene (`SceneFactStore.story?/1` says which facts
+  # are notes). The exclusion happens inside the store, before the limit, so the carry
+  # still answers the newest `carry_limit` turns.
   defp maybe_carry_history(context, tenant_id, user_id, session_id, params) do
     if Map.get(params, "carry_history", false) do
       Map.put(context, "carry_history", carry_history(tenant_id, user_id, session_id, params))
@@ -95,7 +101,8 @@ defmodule BotArmyRpg.Handlers.SessionContextHandler do
     opts = [
       exclude_session_id: session_id,
       user_id: user_id,
-      limit: Map.get(params, "carry_limit", 10)
+      limit: Map.get(params, "carry_limit", 10),
+      story_only: true
     ]
 
     case scene_fact_store().list_recent_for_tenant(tenant_id, opts) do

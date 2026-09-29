@@ -5,6 +5,13 @@ defmodule BotArmyRpg.SceneFactStore do
 
   @server __MODULE__
 
+  # A note says what it is in its own first word, so recognising one needs no
+  # second field that could drift out of step with the content.
+  @verification_mark "[verification]"
+
+  # The machinery speaking is not a person in the scene.
+  @machine_source "system"
+
   def start_link(opts) do
     GenServer.start_link(__MODULE__, opts, name: @server)
   end
@@ -19,9 +26,51 @@ defmodule BotArmyRpg.SceneFactStore do
 
   The window's own turns are excluded, because the caller already has them: what
   this answers is what came before the window that is open now.
+
+  `:story_only` leaves out the notes the machinery wrote (see `story?/1`), and it
+  leaves them out **before** `:limit` is applied — a caller asking for the newest
+  ten turns gets ten turns, not ten rows of which some turned out to be notes.
   """
   def list_recent_for_tenant(tenant_id, opts \\ []),
     do: GenServer.call(@server, {:list_recent_for_tenant, tenant_id, opts})
+
+  @doc """
+  Is this fact *story* — something that happened in a window — rather than a note
+  the machinery wrote?
+
+  Two facts are not story. One whose `source` is `"system"`: the machinery is not
+  someone in the scene, and a thing it notes is not a thing that happened to her.
+  One whose content declares itself a check in its own first word,
+  `[verification]` — compared after leading whitespace and without case, so a note
+  does not become story by being indented or capitalised.
+
+  The convention exists because a feature is sometimes proved by writing a fact
+  into a real window on purpose, and that note then sits in the window's history.
+  `select_recent/3` is where it is acted on; the *policy* — that the carry takes
+  turns and not notes — is stated by the caller that asks for `:story_only`.
+  """
+  def story?(%{"source" => @machine_source}), do: false
+  def story?(%{"content" => content}) when is_binary(content), do: not test_note?(content)
+  def story?(_fact), do: true
+
+  @doc """
+  The selection `list_recent_for_tenant/2` answers, with the GenServer taken out.
+
+  Pure so that the *order of the steps* can be stated and tested rather than
+  reasoned about: the note filter runs before the sort and the limit.
+  """
+  def select_recent(facts, tenant_id, opts) when is_list(facts) do
+    exclude = Keyword.get(opts, :exclude_session_id)
+    user_id = Keyword.get(opts, :user_id)
+    limit = Keyword.get(opts, :limit, 10)
+
+    facts
+    |> Enum.filter(&(&1["tenant_id"] == tenant_id and &1["user_id"] == user_id))
+    |> reject_session(exclude)
+    |> reject_notes(Keyword.get(opts, :story_only, false))
+    |> Enum.sort_by(& &1["created_at"], :desc)
+    |> Enum.take(limit)
+  end
 
   def clear, do: GenServer.call(@server, :clear)
 
@@ -90,19 +139,7 @@ defmodule BotArmyRpg.SceneFactStore do
 
   @impl true
   def handle_call({:list_recent_for_tenant, tenant_id, opts}, _from, state) do
-    exclude = Keyword.get(opts, :exclude_session_id)
-    user_id = Keyword.get(opts, :user_id)
-    limit = Keyword.get(opts, :limit, 10)
-
-    facts =
-      state
-      |> Map.values()
-      |> Enum.filter(&(&1["tenant_id"] == tenant_id and &1["user_id"] == user_id))
-      |> reject_session(exclude)
-      |> Enum.sort_by(& &1["created_at"], :desc)
-      |> Enum.take(limit)
-
-    {:reply, {:ok, facts}, state}
+    {:reply, {:ok, select_recent(Map.values(state), tenant_id, opts)}, state}
   end
 
   @impl true
@@ -117,6 +154,16 @@ defmodule BotArmyRpg.SceneFactStore do
     do: Enum.reject(facts, &(&1["session_id"] == exclude))
 
   defp reject_session(facts, _exclude), do: facts
+
+  defp reject_notes(facts, true), do: Enum.filter(facts, &story?/1)
+  defp reject_notes(facts, _otherwise), do: facts
+
+  defp test_note?(content) do
+    content
+    |> String.trim_leading()
+    |> String.downcase()
+    |> String.starts_with?(@verification_mark)
+  end
 
   defp convert_to_uuid(value) when is_binary(value) do
     case Ecto.UUID.cast(value) do

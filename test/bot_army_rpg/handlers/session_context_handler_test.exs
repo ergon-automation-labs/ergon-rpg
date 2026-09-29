@@ -288,6 +288,10 @@ defmodule BotArmyRpg.Handlers.SessionContextHandlerTest do
       # household member's story never becomes another's.
       assert opts[:exclude_session_id] == session_id
       assert opts[:user_id] == user
+      # Turns, not notes: a fact the machinery wrote is not something that
+      # happened in her story (the exclusion itself is proved against the real
+      # store in scene_fact_store_test.exs).
+      assert opts[:story_only] == true
 
       {:ok,
        [
