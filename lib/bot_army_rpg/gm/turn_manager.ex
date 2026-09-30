@@ -123,7 +123,7 @@ defmodule BotArmyRpg.GM.TurnManager do
     }
 
     %{
-      "turn_state" => %{turn_state | "turn_history" => [record | history]}
+      "turn_state" => Map.put(turn_state, "turn_history", [record | history])
     }
   end
 end

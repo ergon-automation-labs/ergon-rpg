@@ -249,12 +249,20 @@ defmodule BotArmyRpg.Handlers.GMHandler do
 
     {:ok, narration} = Narrator.narrate_action(action, resolution, theme, character)
 
-    # Add scene fact
+    # The narration is the turn. Scene facts are the only thing the window reads as a
+    # turn, so prose that is merely published (`events.rpg.action.resolved`) or handed
+    # back to the caller never reaches the table.
+    #
+    # This replaced a mechanical line that was refused outright: the store reads
+    # `"content"` and it was sent as a key named `"fact"`, and `content` is required, so
+    # every bot turn was dropped in silence. The interpolation was not a fit turn either
+    # — it conjugated action types by appending "ed" ("The Bard inspireed the party").
     scene_fact_store().append(%{
       "session_id" => session_id,
       "tenant_id" => tenant_id,
-      "fact" =>
-        "#{get_actor_name(character_id, tenant_id)} #{action["action_type"]}ed: #{resolution["outcome"]}"
+      "content" => narration,
+      "category" => "narration",
+      "source" => Map.get(character, "bot_id") || "gm"
     })
 
     # Publish event
@@ -369,13 +377,6 @@ defmodule BotArmyRpg.Handlers.GMHandler do
   end
 
   defp maybe_enqueue_bot_autoplay(_, _, _, _), do: nil
-
-  defp get_actor_name(character_id, tenant_id) do
-    case character_store().get(tenant_id, character_id) do
-      {:ok, character} -> character["name"] || "Unknown"
-      _ -> "Unknown"
-    end
-  end
 
   defp resolve_tenant_id(params, message) do
     params["tenant_id"] || message["tenant_id"] ||

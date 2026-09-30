@@ -120,6 +120,35 @@ is the read, and the party is something it carries. The read goes through `fetch
 — the same function the bot-centric adventure context uses — so there is one idea of what
 a party is and one mapping of its refusals, including the `nil`-user case below.
 
+## The companion's turn in the window
+
+The window reads turns from **scene facts** and from nothing else (`gather_context` →
+`scene_facts` → the phone's reverse). So a companion is in the conversation exactly when
+something writes a fact in her name — which is why the narration *is* the turn: a bot's
+action is narrated by `GM.Narrator` and that prose is written as one fact,
+`category: "narration"`.
+
+| The fact's `source` | Who spoke |
+|--------------------|-----------|
+| the character's `bot_id` (e.g. `gtd_bot`) | the bot that plays her: `GMHandler.apply_resolution/8` attributes the narrated action |
+| `operator` | her, from the phone (`party_window.ex`) |
+| `gm` | the theme's narrator voice, for a character no bot plays |
+
+Two things stood in the way of the first row until 0.15.47:
+
+- The fact was sent with a key named `"fact"`, and the store reads `"content"`, which is
+  required. Every bot turn was refused by the changeset and dropped in silence — the
+  operator's own turns worked only because that path passes the wire payload through
+  with the right key. The mechanical line it wrote instead was not a turn either, and its
+  interpolation conjugated by appending `"ed"` ("The Bard inspireed the party").
+- `record_turn/4` built its result with a map-update (`%{turn_state | "turn_history" =>
+  …}`), which raises `KeyError` when the session never had a round started — that is,
+  the first turn ever taken in a fresh session crashed the handler instead of replying.
+  It uses `Map.put/3` now.
+
+The turn the table reads and the narration the caller is told are compared in
+`test/bot_army_rpg/handlers/gm_handler_test.exs`, so they cannot drift apart.
+
 ## Known limits
 
 - **An empty party and no party report the same members.** The party *is* its members, so
@@ -131,3 +160,7 @@ a party is and one mapping of its refusals, including the `nil`-user case below.
   `{tenant_id, user_id}` and the live `gtd_bot` character carries `user_id: nil`; both
   context reads report `%{}` for those instead of asking the store a question it has no
   key for. Asking anyway raised, and that raise took the Consumer process down.
+- **`rpg.scene.narrate` still returns and publishes without writing.** Its prose reaches
+  the caller on `events.rpg.scene.narrated` and the reply, and no fact — so a scene the GM
+  narrates for the table is not a turn. A seat for a narrator companion must decide
+  whether that route (or a new one) is where the round's narration is written.

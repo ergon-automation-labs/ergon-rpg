@@ -14,9 +14,10 @@ defmodule BotArmyRpg.Handlers.GMHandlerTest do
   a read, so a paused session still has an answer, and the asymmetry is pinned below so it
   stays a decision rather than an accident.
 
-  The happy paths that publish (`rpg.turn.your_turn` goes out through the Publisher) are
-  not exercised here: the test run has no publisher by design, and a test that needs one
-  would be testing the environment, not the handler.
+  The happy path that writes a fact (`rpg.action.resolve`) is exercised: the run has no
+  broker, so the publish that follows the write is an error the handler already ignores,
+  and the write itself is asserted through the store double — including that the prose
+  written is the prose the caller is told.
   """
 
   use ExUnit.Case
@@ -145,6 +146,66 @@ defmodule BotArmyRpg.Handlers.GMHandlerTest do
       assert answer["current_actor"] == nil
       assert answer["round"] == nil
       assert answer["turn_order"] == nil
+    end
+  end
+
+  describe "a bot's turn" do
+    test "the narration is the turn, attributed to the bot that played her" do
+      stub(BotArmyRpg.SessionStoreMock, :get, fn _tenant, _session ->
+        {:ok,
+         %{
+           "status" => "active",
+           "id" => @session,
+           "metadata" => %{},
+           "scene_description" => "a hall with one long table"
+         }}
+      end)
+
+      stub(BotArmyRpg.CharacterStoreMock, :get, fn _tenant, @character ->
+        {:ok,
+         %{
+           "id" => @character,
+           "name" => "The Lorekeeper",
+           "class" => "Sage",
+           "bot_id" => "gtd_bot",
+           "stats" => %{}
+         }}
+      end)
+
+      stub(BotArmyRpg.CharacterStoreMock, :update, fn _tenant, _character, attrs ->
+        {:ok, attrs}
+      end)
+
+      stub(BotArmyRpg.ThemeStoreMock, :get_current, fn _tenant -> {:ok, %{}} end)
+
+      stub(BotArmyRpg.SceneFactStoreMock, :list_for_session, fn _tenant, _session -> {:ok, []} end)
+
+      stub(BotArmyRpg.SessionStoreMock, :update, fn _tenant, _session, attrs -> {:ok, attrs} end)
+
+      expect(BotArmyRpg.SceneFactStoreMock, :append, fn fact ->
+        # The handler already wrote the fact when the reply comes back, so the content —
+        # which is the narration the caller is told — is compared after the call.
+        send(self(), {:appended, fact})
+        {:ok, %{}}
+      end)
+
+      assert {:ok, result} =
+               GMHandler.handle_action_resolve(
+                 payload(%{
+                   "character_id" => @character,
+                   "action" => %{"action_type" => "inspect"}
+                 })
+               )
+
+      assert_received {:appended, fact}
+
+      # The turn and the reply are one thing: the window must read exactly the prose the
+      # caller was told, not a second rendering of it.
+      assert is_binary(fact["content"]) and fact["content"] != ""
+      assert fact["content"] == result["narration"]
+      assert fact["category"] == "narration"
+      assert fact["source"] == "gtd_bot"
+      assert fact["session_id"] == @session
     end
   end
 end
