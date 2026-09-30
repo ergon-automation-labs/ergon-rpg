@@ -2,9 +2,9 @@ defmodule BotArmyRpg.Handlers.SessionContextHandler do
   @moduledoc """
   Handles `rpg.session.gather_context` — narrative context for other bots.
 
-  Fetches the active RPG session, scene facts, character, and current theme
-  so fitness.chat, synapse, or any other bot can flavor responses with
-  Resistance Chronicle narrative state.
+  Fetches the active RPG session, scene facts, character, current theme, and the
+  party the window's identity walks with, so fitness.chat, synapse, or any other
+  bot can flavor responses with Resistance Chronicle narrative state.
   """
 
   require Logger
@@ -40,6 +40,11 @@ defmodule BotArmyRpg.Handlers.SessionContextHandler do
     - "fact_limit" (integer, optional — max scene facts, default 10)
 
   Returns `{:ok, context_map}` or `{:error, reason}`.
+
+  The context always carries `"party"`: the roster this identity walks with, `%{}`
+  when the store answered that it has none, and `nil` when the roster could not be
+  read at all. Those last two are different facts (`nil` is not an empty party), and
+  an unreadable roster never takes the window down.
   """
   def handle_gather_context(message) do
     params = message["payload"] || message
@@ -69,6 +74,7 @@ defmodule BotArmyRpg.Handlers.SessionContextHandler do
           "tenant_id" => tenant_id,
           "user_id" => user_id
         }
+        |> maybe_party(tenant_id, user_id)
         |> maybe_carry_history(tenant_id, user_id, session["id"], params)
 
       {:ok, context}
@@ -76,6 +82,35 @@ defmodule BotArmyRpg.Handlers.SessionContextHandler do
   end
 
   # --- Private ---
+
+  # Who the window's identity walks with. The party rides in the context rather than
+  # being something a caller has to ask for: the bots that flavor a reply out of this
+  # read are exactly the ones that never knew to ask, and since 0.15.46 the roster is
+  # durable (`rpg_party_members`), so carrying it is a reading and not a guess.
+  #
+  # It is read through `fetch_party/2` — the same function the bot-centric adventure
+  # context uses — so there is one idea of what a party is and one mapping of its
+  # refusals.
+  #
+  # Three answers, and they are not interchangeable: a party (whose `members` may be
+  # empty), `%{}` when the store answered that this identity has none, and `nil` when
+  # the party could not be read at all. `nil` is not an empty party, and an unreadable
+  # roster must not take the window down: the window is the read, and the party is
+  # something it carries — the same rule as the carry below.
+  defp maybe_party(context, tenant_id, user_id) do
+    case fetch_party(tenant_id, user_id) do
+      {:ok, party} -> Map.put(context, "party", party)
+      {:error, reason} -> unreported_party(context, inspect(shape(reason)))
+    end
+  rescue
+    e ->
+      # The kind of failure, not its message: a `FunctionClauseError`'s message carries
+      # the arguments it was called with, and those are the party's key. The store logs
+      # the detail itself ([PartyStore] Could not …).
+      unreported_party(context, "raised #{inspect(e.__struct__)}")
+  catch
+    :exit, reason -> unreported_party(context, "exited #{inspect(shape(reason))}")
+  end
 
   # The story so far: the newest turns of this identity's *other* windows, so a window
   # opens with what came before it instead of cold. Asked for explicitly, and a consumer
@@ -280,5 +315,15 @@ defmodule BotArmyRpg.Handlers.SessionContextHandler do
       {:error, :not_found} -> {:ok, %{}}
       {:error, reason} -> {:error, reason}
     end
+  end
+
+  # A dead store's reason is a tuple whose tail is the call that died, and the arguments
+  # of that call are the party's key. A log line records the shape, never the key (N+64).
+  defp shape(reason) when is_tuple(reason), do: elem(reason, 0)
+  defp shape(reason), do: reason
+
+  defp unreported_party(context, what) do
+    Logger.warning("[SessionContext] Party unread: #{what}; carrying nil")
+    Map.put(context, "party", nil)
   end
 end

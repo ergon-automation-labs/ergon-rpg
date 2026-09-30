@@ -102,6 +102,24 @@ BOT_ARMY_RPG_DB_NAME=bot_army_rpg_test BOT_ARMY_RPG_DB_HOST=127.0.0.1 \
 `config/test.exs` sets `pool_size: 2` for this: the migration runner holds a lock
 connection while it migrates, and a single-connection pool deadlocks it.
 
+## The party in the narrative context
+
+`rpg.session.gather_context` carries the party too. The bots that flavor a reply out of
+that read — `fitness.chat`, the phone's window — are exactly the ones that never knew to
+ask for a roster, so it is not opt-in the way the carry history is. The key has three
+answers, and they are not interchangeable:
+
+| `"party"` | What happened | What a caller may say |
+|-----------|---------------|-----------------------|
+| a map with `members` | the store answered: this identity has companions | who walks with her |
+| `%{}` | the store answered: this identity has none | nobody does — yet |
+| `nil` | the roster was not read (refusal, dead store, raise) | nothing — it is unreported |
+
+`nil` is not an empty party. An unreadable roster never takes the window down: the window
+is the read, and the party is something it carries. The read goes through `fetch_party/2`
+— the same function the bot-centric adventure context uses — so there is one idea of what
+a party is and one mapping of its refusals, including the `nil`-user case below.
+
 ## Known limits
 
 - **An empty party and no party report the same members.** The party *is* its members, so
@@ -109,6 +127,7 @@ connection while it migrates, and a single-connection pool deadlocks it.
   A durable `exists` flag would have to be a second table.
 - **Levels and stats are not in the party**, so a party read while `CharacterStore` is
   unavailable shows the member's stored name and no level.
-- **`rpg.session.gather_context` still carries no roster.** Banter for other bots needs
-  the party to appear in that payload; that is Road B, and it must not break
-  `fetch_party/2`'s `{:error, :not_found}` → `{:ok, %{}}` mapping.
+- **A companion with no user has no party to report.** The party's key is
+  `{tenant_id, user_id}` and the live `gtd_bot` character carries `user_id: nil`; both
+  context reads report `%{}` for those instead of asking the store a question it has no
+  key for. Asking anyway raised, and that raise took the Consumer process down.

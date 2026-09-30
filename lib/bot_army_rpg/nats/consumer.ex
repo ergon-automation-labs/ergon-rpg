@@ -155,7 +155,7 @@ defmodule BotArmyRpg.NATS.Consumer do
     %{
       subject: "rpg.session.gather_context",
       type: :request_reply,
-      description: "Gather narrative context for a user session"
+      description: "Gather narrative context for a user session, including its party"
     },
     # The party routes, registered 2026-09-29. `BotArmyRpg.Handlers.PartyHandler` had
     # answered these four subjects since it was written, and nothing subscribed to any

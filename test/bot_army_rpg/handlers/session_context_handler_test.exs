@@ -15,6 +15,11 @@ defmodule BotArmyRpg.Handlers.SessionContextHandlerTest do
     Application.put_env(:bot_army_rpg, :theme_store, BotArmyRpg.ThemeStoreMock)
     Application.put_env(:bot_army_rpg, :party_store, BotArmyRpg.PartyStoreMock)
 
+    # The party rides in every context (2026-09-30), so the double answers it by default:
+    # most of these tests are about the window, not about who walks with her. A test that
+    # cares says so with an `expect`.
+    Mox.stub(BotArmyRpg.PartyStoreMock, :get_party, fn _tenant, _user -> {:error, :not_found} end)
+
     on_exit(fn ->
       Application.delete_env(:bot_army_rpg, :session_store)
       Application.delete_env(:bot_army_rpg, :scene_fact_store)
@@ -395,6 +400,139 @@ defmodule BotArmyRpg.Handlers.SessionContextHandlerTest do
     # nil is "the bot did not say", [] is "nothing came before". Only one of those is true.
     assert context["carry_history"] == nil
     refute context["carry_history"] == []
+  end
+
+  # ───────────────────────────────────────────────────────────────────────────
+  # The party the window carries
+  # ───────────────────────────────────────────────────────────────────────────
+
+  test "gather_context carries the roster this identity walks with" do
+    tenant = "00000000-0000-0000-0000-000000000099"
+    user = "00000000-0000-0000-0000-0000000000aa"
+    session_id = "00000000-0000-0000-0000-0000000000cc"
+    carry_history_session(tenant, user, session_id)
+
+    Mox.expect(BotArmyRpg.PartyStoreMock, :get_party, fn ^tenant, ^user ->
+      {:ok,
+       %{
+         "name" => "The Adventuring Party",
+         "members" => [
+           %{"bot_id" => "gtd_bot", "name" => "The Lorekeeper", "class" => "Sage"}
+         ]
+       }}
+    end)
+
+    msg = %{
+      "payload" => %{"tenant_id" => tenant, "user_id" => user, "session_id" => session_id}
+    }
+
+    assert {:ok, context} = SessionContextHandler.handle_gather_context(msg)
+    # The identity the party is stored under is the one the window belongs to, and the
+    # read is the same `fetch_party/2` the bot-centric adventure context uses.
+    assert context["party"]["name"] == "The Adventuring Party"
+    assert [%{"bot_id" => "gtd_bot"}] = context["party"]["members"]
+    assert context["session_id"] == session_id
+  end
+
+  test "no party at all: the store answered, and it says nobody" do
+    tenant = "00000000-0000-0000-0000-000000000099"
+    user = "00000000-0000-0000-0000-0000000000aa"
+    session_id = "00000000-0000-0000-0000-0000000000cc"
+    carry_history_session(tenant, user, session_id)
+
+    Mox.expect(BotArmyRpg.PartyStoreMock, :get_party, fn ^tenant, ^user ->
+      {:error, :not_found}
+    end)
+
+    msg = %{
+      "payload" => %{"tenant_id" => tenant, "user_id" => user, "session_id" => session_id}
+    }
+
+    assert {:ok, context} = SessionContextHandler.handle_gather_context(msg)
+    # The store was asked and answered: this identity has no party. That is a reading.
+    assert context["party"] == %{}
+    refute context["party"] == nil
+  end
+
+  test "a party that cannot be read is unreported, and the window still stands" do
+    tenant = "00000000-0000-0000-0000-000000000099"
+    user = "00000000-0000-0000-0000-0000000000aa"
+    session_id = "00000000-0000-0000-0000-0000000000cc"
+    carry_history_session(tenant, user, session_id)
+
+    Mox.expect(BotArmyRpg.PartyStoreMock, :get_party, fn ^tenant, ^user ->
+      {:error, :database_unavailable}
+    end)
+
+    msg = %{
+      "payload" => %{"tenant_id" => tenant, "user_id" => user, "session_id" => session_id}
+    }
+
+    assert {:ok, context} = SessionContextHandler.handle_gather_context(msg)
+    assert context["session_id"] == session_id
+    # nil is "the bot did not say", %{} is "nobody walks with her". Only one is true.
+    assert context["party"] == nil
+    refute context["party"] == %{}
+  end
+
+  test "a party store that is dead is unreported too, and its key never reaches the log" do
+    tenant = "00000000-0000-0000-0000-000000000099"
+    user = "00000000-0000-0000-0000-0000000000aa"
+    session_id = "00000000-0000-0000-0000-0000000000cc"
+    carry_history_session(tenant, user, session_id)
+
+    # What `GenServer.call` exits with when nothing is registered under the name: the
+    # reason carries the arguments of the call that died, and those are the party's key.
+    Mox.expect(BotArmyRpg.PartyStoreMock, :get_party, fn tenant, user ->
+      exit(
+        {:noproc, {GenServer, :call, [BotArmyRpg.PartyStore, {:get_party, tenant, user}, 5000]}}
+      )
+    end)
+
+    msg = %{
+      "payload" => %{"tenant_id" => tenant, "user_id" => user, "session_id" => session_id}
+    }
+
+    log =
+      ExUnit.CaptureLog.capture_log(fn ->
+        assert {:ok, context} = SessionContextHandler.handle_gather_context(msg)
+        assert context["session_id"] == session_id
+        assert context["party"] == nil
+      end)
+
+    assert log =~ "Party unread: exited :noproc"
+    refute log =~ user
+  end
+
+  test "an identity with no user is never asked about a party" do
+    tenant = "00000000-0000-0000-0000-000000000099"
+    session_id = "00000000-0000-0000-0000-0000000000cc"
+
+    Mox.expect(BotArmyRpg.SessionStoreMock, :get, fn ^tenant, ^session_id ->
+      {:ok,
+       %{
+         "id" => session_id,
+         "tenant_id" => tenant,
+         "user_id" => nil,
+         "status" => "active",
+         "scene_description" => "probe"
+       }}
+    end)
+
+    Mox.expect(BotArmyRpg.SceneFactStoreMock, :list_for_session, fn ^tenant, ^session_id ->
+      {:ok, []}
+    end)
+
+    Mox.expect(BotArmyRpg.ThemeStoreMock, :get_current, fn ^tenant -> {:error, :not_found} end)
+
+    # No party expectation: a message with no identity has no party to look up, so the
+    # store must not be asked at all — the read reports that it cannot be made, rather
+    # than manufacturing a question the store has no key for.
+    msg = %{"payload" => %{"tenant_id" => tenant, "session_id" => session_id}}
+
+    assert {:ok, context} = SessionContextHandler.handle_gather_context(msg)
+    assert context["session_id"] == session_id
+    assert context["party"] == %{}
   end
 
   # ───────────────────────────────────────────────────────────────────────────
