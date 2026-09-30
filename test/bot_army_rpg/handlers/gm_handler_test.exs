@@ -149,8 +149,8 @@ defmodule BotArmyRpg.Handlers.GMHandlerTest do
     end
   end
 
-  describe "a bot's turn" do
-    test "the narration is the turn, attributed to the bot that played her" do
+  describe "the name on a turn" do
+    test "the GM's own prose is signed by the GM, even when a bot plays the character" do
       stub(BotArmyRpg.SessionStoreMock, :get, fn _tenant, _session ->
         {:ok,
          %{
@@ -204,8 +204,51 @@ defmodule BotArmyRpg.Handlers.GMHandlerTest do
       assert is_binary(fact["content"]) and fact["content"] != ""
       assert fact["content"] == result["narration"]
       assert fact["category"] == "narration"
-      assert fact["source"] == "gtd_bot"
+      assert fact["source"] == "gm"
+      refute fact["source"] == "gtd_bot"
       assert fact["session_id"] == @session
+    end
+
+    test "a character no bot plays is signed the same way" do
+      stub(BotArmyRpg.SessionStoreMock, :get, fn _tenant, _session ->
+        {:ok,
+         %{
+           "status" => "active",
+           "id" => @session,
+           "metadata" => %{},
+           "scene_description" => "a hall with one long table"
+         }}
+      end)
+
+      stub(BotArmyRpg.CharacterStoreMock, :get, fn _tenant, @character ->
+        {:ok, %{"id" => @character, "name" => "Louiza", "class" => "Sage", "stats" => %{}}}
+      end)
+
+      stub(BotArmyRpg.CharacterStoreMock, :update, fn _tenant, _character, attrs ->
+        {:ok, attrs}
+      end)
+
+      stub(BotArmyRpg.ThemeStoreMock, :get_current, fn _tenant -> {:ok, %{}} end)
+
+      stub(BotArmyRpg.SceneFactStoreMock, :list_for_session, fn _tenant, _session -> {:ok, []} end)
+
+      stub(BotArmyRpg.SessionStoreMock, :update, fn _tenant, _session, attrs -> {:ok, attrs} end)
+
+      expect(BotArmyRpg.SceneFactStoreMock, :append, fn fact ->
+        send(self(), {:appended, fact})
+        {:ok, %{}}
+      end)
+
+      assert {:ok, _result} =
+               GMHandler.handle_action_resolve(
+                 payload(%{
+                   "character_id" => @character,
+                   "action" => %{"action_type" => "inspect"}
+                 })
+               )
+
+      assert_received {:appended, fact}
+      assert fact["source"] == "gm"
     end
   end
 end

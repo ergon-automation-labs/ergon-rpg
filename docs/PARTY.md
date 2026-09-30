@@ -128,9 +128,9 @@ a party is and one mapping of its refusals, including the `nil`-user case below.
 
 ## The narrator is a role, held by one member
 
-The window can already render a companion's turn (`GMHandler.apply_resolution/8` writes
-the narrated action with her `bot_id` as the fact's `source`). What it could not render is
-*whose story it is* — who narrates the scene the party walks through.
+The window can already render a turn (`GMHandler.apply_resolution/8` writes the narrated
+action as a fact). What it could not render is *whose story it is* — who narrates the scene
+the party walks through.
 
 That is a role, not a turn. `rpg.party.set_narrator` names one member, and
 `BotArmyRpg.PartyStore.narrator/1` reads the answer out of the party the caller already
@@ -139,9 +139,11 @@ transaction in `PartyRepo.set_narrator/3`; a new narrator demotes the one before
 
 Two things this deliberately does **not** do:
 
-- **It does not write prose in the narrator's name.** `GM.Narrator` still narrates for the
-  table and still signs its facts `source: "gm"`. Attributing the theme's voice to a bot
-  that never spoke would be a fabrication, and the window would have no way to tell.
+- **It does not write prose in the narrator's name.** `GM.Narrator` narrates for the
+  table and signs what it writes `source: "gm"`. It did not always: until 0.15.49
+  `apply_resolution/8` signed the acting character's `bot_id`, which put the theme's voice
+  in a bot's mouth. A member's name belongs on words the member wrote, and that write is
+  the next slice.
 - **It does not publish a narration request nobody answers.** No bot in the fleet
   subscribes to any `rpg.*` subject yet, so a request event today would be a dead end that
   looks like a wire. That wiring — the narrator's bot answering her own turn, including the
@@ -156,15 +158,27 @@ badge who narrates. A party with no narrator is a normal party — `narrator/1` 
 
 The window reads turns from **scene facts** and from nothing else (`gather_context` →
 `scene_facts` → the phone's reverse). So a companion is in the conversation exactly when
-something writes a fact in her name — which is why the narration *is* the turn: a bot's
-action is narrated by `GM.Narrator` and that prose is written as one fact,
-`category: "narration"`.
+something writes a fact in her name — which is why the narration *is* the turn: an action
+is narrated by `GM.Narrator` and that prose is written as one fact, `category:
+"narration"`.
+
+## Whose name is on the words
+
+The signer is the generator. The window draws `source` as the speaker (`party_window.ex` →
+`who/1`), so the field says who wrote the prose, never who the prose is about:
 
 | The fact's `source` | Who spoke |
 |--------------------|-----------|
-| the character's `bot_id` (e.g. `gtd_bot`) | the bot that plays her: `GMHandler.apply_resolution/8` attributes the narrated action |
+| `gm` | the theme's narrator voice: `GMHandler.apply_resolution/8`, whether or not a bot plays the character — `GM.Narrator` asks the LLM as the Game Master and a template answers when the LLM is away, and both are the GM |
 | `operator` | her, from the phone (`party_window.ex`) |
-| `gm` | the theme's narrator voice, for a character no bot plays |
+| a character's `bot_id` (e.g. `gtd_bot`) | that bot, *when the bot writes the turn itself* — no rpg path does this yet |
+| `system` | the machinery: not story, and excluded from the carry (`story?/1`) |
+
+Signing the GM's prose `gm` does not lose the actor: the prompt and the fallback both name
+her, and `TurnManager.record_turn/4` records her turn in the session metadata. The
+alternative — keeping `source: bot_id` and reading it as *the turn belongs to her* — was
+rejected because the screen has one field for this and draws it as a speaker, so the two
+readings cannot both be true, and the fabricated one is the one the table would have shown.
 
 Two things stood in the way of the first row until 0.15.47:
 

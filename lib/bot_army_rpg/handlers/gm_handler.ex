@@ -253,6 +253,14 @@ defmodule BotArmyRpg.Handlers.GMHandler do
     # turn, so prose that is merely published (`events.rpg.action.resolved`) or handed
     # back to the caller never reaches the table.
     #
+    # The name on it is the GM's, because the GM wrote it. `GM.Narrator` asks as "the
+    # Game Master narrating an action" and falls back to a template when the LLM is
+    # away; both are the theme's voice, so signing the acting character's `bot_id`
+    # would put words in a bot's mouth that no bot said — and the window draws `source`
+    # as the speaker, so it could not tell. A turn in a bot's own name is written by
+    # that bot, which is the narrator slice's next half. The actor is not lost: the
+    # prompt and the fallback both name her, and `turn_history` records her turn.
+    #
     # This replaced a mechanical line that was refused outright: the store reads
     # `"content"` and it was sent as a key named `"fact"`, and `content` is required, so
     # every bot turn was dropped in silence. The interpolation was not a fit turn either
@@ -262,7 +270,7 @@ defmodule BotArmyRpg.Handlers.GMHandler do
       "tenant_id" => tenant_id,
       "content" => narration,
       "category" => "narration",
-      "source" => Map.get(character, "bot_id") || "gm"
+      "source" => "gm"
     })
 
     # Publish event
