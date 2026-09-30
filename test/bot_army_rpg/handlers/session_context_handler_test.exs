@@ -417,7 +417,12 @@ defmodule BotArmyRpg.Handlers.SessionContextHandlerTest do
        %{
          "name" => "The Adventuring Party",
          "members" => [
-           %{"bot_id" => "gtd_bot", "name" => "The Lorekeeper", "class" => "Sage"}
+           %{
+             "bot_id" => "gtd_bot",
+             "name" => "The Lorekeeper",
+             "class" => "Sage",
+             "role" => "narrator"
+           }
          ]
        }}
     end)
@@ -430,7 +435,9 @@ defmodule BotArmyRpg.Handlers.SessionContextHandlerTest do
     # The identity the party is stored under is the one the window belongs to, and the
     # read is the same `fetch_party/2` the bot-centric adventure context uses.
     assert context["party"]["name"] == "The Adventuring Party"
-    assert [%{"bot_id" => "gtd_bot"}] = context["party"]["members"]
+    # Including the role: who narrates the scene is read out of the roster the window
+    # already carries, so the window needs no second read to badge the narrator.
+    assert [%{"bot_id" => "gtd_bot", "role" => "narrator"}] = context["party"]["members"]
     assert context["session_id"] == session_id
   end
 

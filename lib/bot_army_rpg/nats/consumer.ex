@@ -182,6 +182,13 @@ defmodule BotArmyRpg.NATS.Consumer do
       type: :request_reply,
       description: "Take a companion out of the party"
     },
+    # Added 0.15.48 with `BotArmyRpg.PartyStore.set_narrator/3`: the narrator is a role a
+    # member holds (at most one), not a turn, and this is how it is named.
+    %{
+      subject: "rpg.party.set_narrator",
+      type: :request_reply,
+      description: "Name one member the party's narrator (null clears it)"
+    },
     %{
       subject: "rpg.adventure.context.query",
       type: :request_reply,
@@ -508,6 +515,9 @@ defmodule BotArmyRpg.NATS.Consumer do
 
       "rpg.party.remove" ->
         PartyHandler.handle_remove(body)
+
+      "rpg.party.set_narrator" ->
+        PartyHandler.handle_set_narrator(body)
 
       "rpg.session.pause" ->
         SessionHandler.handle_pause(body)

@@ -166,4 +166,72 @@ defmodule BotArmyRpg.PartyStoreTest do
       assert [%{"bot_id" => "gtd_bot"}] = party["members"]
     end
   end
+
+  describe "the narrator is a role, held by one member" do
+    test "naming a narrator is answered with the party read back, and exactly one member holds it" do
+      {:ok, _} = PartyStore.add_member(@tenant, @user, member("gtd_bot"))
+      {:ok, _} = PartyStore.add_member(@tenant, @user, member("llm_bot"))
+
+      assert {:ok, party} = PartyStore.set_narrator(@tenant, @user, @characters["gtd_bot"])
+
+      assert Enum.count(party["members"], &(&1["role"] == "narrator")) == 1
+      assert PartyStore.narrator(party)["bot_id"] == "gtd_bot"
+    end
+
+    test "naming a second narrator demotes the one before her" do
+      {:ok, _} = PartyStore.add_member(@tenant, @user, member("gtd_bot"))
+      {:ok, _} = PartyStore.add_member(@tenant, @user, member("llm_bot"))
+      {:ok, _} = PartyStore.set_narrator(@tenant, @user, @characters["gtd_bot"])
+
+      # A party with two narrators is a state the rule says cannot exist, so the write
+      # that names the second one is the write that takes the role off the first.
+      assert {:ok, party} = PartyStore.set_narrator(@tenant, @user, @characters["llm_bot"])
+
+      roles = Map.new(party["members"], &{&1["bot_id"], &1["role"]})
+      assert roles == %{"gtd_bot" => "companion", "llm_bot" => "narrator"}
+    end
+
+    test "naming a member who is not in the party is a refusal, and nothing moves" do
+      {:ok, _} = PartyStore.add_member(@tenant, @user, member("gtd_bot"))
+      {:ok, _} = PartyStore.set_narrator(@tenant, @user, @characters["gtd_bot"])
+
+      assert {:error, :not_a_member} =
+               PartyStore.set_narrator(@tenant, @user, @characters["llm_bot"])
+
+      assert {:ok, party} = PartyStore.get_party(@tenant, @user)
+      assert PartyStore.narrator(party)["bot_id"] == "gtd_bot"
+    end
+
+    test "clearing the role names nobody, and is not the same as naming a member" do
+      {:ok, _} = PartyStore.add_member(@tenant, @user, member("gtd_bot"))
+      {:ok, _} = PartyStore.set_narrator(@tenant, @user, @characters["gtd_bot"])
+
+      assert {:ok, party} = PartyStore.set_narrator(@tenant, @user, nil)
+
+      assert PartyStore.narrator(party) == nil
+      assert Enum.all?(party["members"], &(&1["role"] == "companion"))
+    end
+
+    test "a role write that fails is a refusal, and the party is as it was" do
+      {:ok, _} = PartyStore.add_member(@tenant, @user, member("gtd_bot"))
+      FakePartyRepo.break_writes()
+
+      assert {:error, :database_unavailable} =
+               PartyStore.set_narrator(@tenant, @user, @characters["gtd_bot"])
+
+      FakePartyRepo.mend()
+
+      assert {:ok, party} = PartyStore.get_party(@tenant, @user)
+      assert [%{"role" => "companion"}] = party["members"]
+    end
+
+    test "a party that could not be read has no narrator — and says so by refusing" do
+      FakePartyRepo.break_reads()
+
+      # Not `narrator(party) == nil`: there is no party to ask. An unreported party may
+      # not be reported as a party of nobody.
+      assert {:error, :database_unavailable} = PartyStore.get_party(@tenant, @user)
+      assert PartyStore.narrator(%{}) == nil
+    end
+  end
 end

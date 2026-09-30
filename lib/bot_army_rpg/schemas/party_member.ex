@@ -14,6 +14,12 @@ defmodule BotArmyRpg.Schemas.PartyMember do
   here the cast refuses it before a query is built. There is deliberately no foreign key
   to `rpg_characters`: a well-formed id that names no character is accepted, so a
   companion can outlive the character row she points at.
+
+  `role` is what a member is *in this party*, not a copy of anything the character store
+  knows: a `companion`, or the one `narrator` a party may have. It is a designation the
+  window can render and a rule the store enforces (see
+  `BotArmyRpg.PartyStore.set_narrator/3`); it is deliberately not a voice, and nothing
+  here claims a bot said anything.
   """
   use Ecto.Schema
   import Ecto.Changeset
@@ -21,7 +27,10 @@ defmodule BotArmyRpg.Schemas.PartyMember do
   @primary_key {:id, Ecto.UUID, autogenerate: true}
   @foreign_key_type Ecto.UUID
 
-  @roles ["companion"]
+  # The two things a member can be in a party. `narrator` is held by at most one member —
+  # the store's write is what keeps it singular — so the list is a vocabulary, and
+  # "exactly one" is a rule the changeset cannot state about a set of rows.
+  @roles ["companion", "narrator"]
 
   schema "rpg_party_members" do
     field(:tenant_id, Ecto.UUID)

@@ -118,6 +118,71 @@ defmodule BotArmyRpg.Handlers.PartyHandlerTest do
     end
   end
 
+  describe "handle_set_narrator/1" do
+    test "names the narrator through the store, and answers with the party that write produced" do
+      Mox.expect(BotArmyRpg.PartyStoreMock, :set_narrator, fn @tenant, @user, "char-gtd_bot" ->
+        {:ok,
+         party_with([
+           %{"bot_id" => "gtd_bot", "character_id" => "char-gtd_bot", "role" => "narrator"}
+         ])}
+      end)
+
+      Mox.expect(BotArmyRpg.CharacterStoreMock, :get_by_bot_id, fn @tenant, "gtd_bot" ->
+        {:error, :not_found}
+      end)
+
+      assert {:ok, party} =
+               PartyHandler.handle_set_narrator(%{
+                 "tenant_id" => @tenant,
+                 "user_id" => @user,
+                 "character_id" => "char-gtd_bot"
+               })
+
+      assert [member] = party["members"]
+      assert member["role"] == "narrator"
+    end
+
+    test "an explicit null clears the role; an absent character_id is a different request" do
+      # Two requests that look alike and are not: `nil` is how a caller clears the role,
+      # and a missing key is a caller who forgot to name anyone.
+      assert {:error, :missing_character_id} =
+               PartyHandler.handle_set_narrator(%{"tenant_id" => @tenant, "user_id" => @user})
+
+      Mox.expect(BotArmyRpg.PartyStoreMock, :set_narrator, fn @tenant, @user, nil ->
+        {:ok, party_with([%{"bot_id" => "gtd_bot", "role" => "companion"}])}
+      end)
+
+      Mox.expect(BotArmyRpg.CharacterStoreMock, :get_by_bot_id, fn @tenant, "gtd_bot" ->
+        {:error, :not_found}
+      end)
+
+      assert {:ok, %{"members" => [%{"role" => "companion"}]}} =
+               PartyHandler.handle_set_narrator(%{
+                 "tenant_id" => @tenant,
+                 "user_id" => @user,
+                 "character_id" => nil
+               })
+    end
+
+    test "a member the party does not have is refused, not quietly ignored" do
+      Mox.expect(BotArmyRpg.PartyStoreMock, :set_narrator, fn @tenant, @user, "char-ghost" ->
+        {:error, :not_a_member}
+      end)
+
+      assert {:error, :not_a_member} =
+               PartyHandler.handle_set_narrator(%{
+                 "tenant_id" => @tenant,
+                 "user_id" => @user,
+                 "character_id" => "char-ghost"
+               })
+    end
+
+    test "a call that names no identity is refused" do
+      assert {:error, :missing_user_id} =
+               PartyHandler.handle_set_narrator(%{"tenant_id" => @tenant, "character_id" => nil})
+    end
+  end
+
   describe "handle_add/1" do
     test "recruits a bot companion and answers with the party it joined" do
       character = %{

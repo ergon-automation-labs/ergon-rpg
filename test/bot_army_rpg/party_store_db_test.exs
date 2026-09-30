@@ -146,6 +146,47 @@ defmodule BotArmyRpg.PartyStoreDbTest do
              )
   end
 
+  test "naming a narrator demotes the one before her, in the rows themselves" do
+    start_supervised!(PartyStore)
+    {:ok, _} = PartyStore.add_member(@tenant, @user, member("gtd_bot"))
+    {:ok, _} = PartyStore.add_member(@tenant, @user, member("llm_bot"))
+    {:ok, _} = PartyStore.set_narrator(@tenant, @user, @characters["gtd_bot"])
+    {:ok, party} = PartyStore.set_narrator(@tenant, @user, @characters["llm_bot"])
+
+    # Asserted on the party *and* on the rows: a transaction that committed the demotion
+    # and lost the promotion would still pass a check that only read the answer.
+    assert [%{"bot_id" => "llm_bot"}] = Enum.filter(party["members"], &(&1["role"] == "narrator"))
+
+    rows = PartyRepo.members(@tenant, @user)
+
+    assert [%{"role" => "companion"}] = Enum.filter(rows, &(&1["bot_id"] == "gtd_bot"))
+    assert [%{"role" => "narrator"}] = Enum.filter(rows, &(&1["bot_id"] == "llm_bot"))
+  end
+
+  test "clearing the role leaves no narrator in the table" do
+    start_supervised!(PartyStore)
+    {:ok, _} = PartyStore.add_member(@tenant, @user, member("gtd_bot"))
+    {:ok, _} = PartyStore.set_narrator(@tenant, @user, @characters["gtd_bot"])
+    {:ok, _} = PartyStore.set_narrator(@tenant, @user, nil)
+
+    assert Enum.filter(PartyRepo.members(@tenant, @user), &(&1["role"] == "narrator")) == []
+  end
+
+  test "naming a member the party does not have is refused, and moves no row" do
+    start_supervised!(PartyStore)
+    {:ok, _} = PartyStore.add_member(@tenant, @user, member("gtd_bot"))
+    {:ok, _} = PartyStore.set_narrator(@tenant, @user, @characters["gtd_bot"])
+
+    assert {:error, :not_a_member} =
+             PartyStore.set_narrator(@tenant, @user, @characters["llm_bot"])
+
+    # The refusal has to leave the party exactly as it was: a demotion that committed
+    # before the membership check would satisfy "refused" and still have taken the role
+    # off the narrator.
+    assert [%{"role" => "narrator"}] =
+             Enum.filter(PartyRepo.members(@tenant, @user), &(&1["role"] == "narrator"))
+  end
+
   test "a table that is not there is a refusal, not an empty party" do
     start_supervised!(PartyStore)
     Repo.query!("DROP TABLE rpg_party_members")

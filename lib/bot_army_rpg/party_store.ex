@@ -58,6 +58,14 @@ defmodule BotArmyRpg.PartyStore do
     GenServer.call(@server, {:remove_member, tenant_id, user_id, character_id})
   end
 
+  # `character_id` is deliberately unguarded: `nil` is a request — clear the role — and it
+  # is not the same request as naming a member.
+  @impl true
+  def set_narrator(tenant_id, user_id, character_id)
+      when is_binary(tenant_id) and is_binary(user_id) do
+    GenServer.call(@server, {:set_narrator, tenant_id, user_id, character_id})
+  end
+
   @impl true
   def auto_populate(tenant_id, user_id) when is_binary(tenant_id) and is_binary(user_id) do
     GenServer.call(@server, {:auto_populate, tenant_id, user_id}, 15_000)
@@ -107,6 +115,14 @@ defmodule BotArmyRpg.PartyStore do
       {:error, reason} ->
         {:reply, {:error, reason}, state}
     end
+  end
+
+  # The answer is the party read back after the rows moved, never the party the request
+  # implied — and a member the party does not have is a refusal, not a quiet promotion of
+  # nobody. See `narrate/4`.
+  @impl true
+  def handle_call({:set_narrator, tenant_id, user_id, character_id}, _from, state) do
+    {:reply, narrate(state, tenant_id, user_id, character_id), state}
   end
 
   @impl true
@@ -174,6 +190,26 @@ defmodule BotArmyRpg.PartyStore do
     }
   end
 
+  @doc """
+  The party's narrator, or `nil`.
+
+  One answer to "who narrates", read out of the party itself — the member whose role is
+  `narrator`. A party has one or none, and `set_narrator/3` is the only thing that can
+  change it, so this is a lookup and not a vote.
+
+  `nil` means *no member holds the role*. It never means *the party could not be read*:
+  that is already a refusal by the time a caller has a party to pass here.
+
+  Public for the same reason as `blank_party/0`: two callers asking who narrates must not
+  each spell the answer, and the window must not be the second place that decides what a
+  narrator is.
+  """
+  def narrator(%{"members" => members}) when is_list(members) do
+    Enum.find(members, &(&1["role"] == "narrator"))
+  end
+
+  def narrator(_party), do: nil
+
   # --- Private ---
 
   # A party is its members, and its `created_at` is the oldest membership — the moment
@@ -230,6 +266,36 @@ defmodule BotArmyRpg.PartyStore do
       {:error, reason} ->
         {:error, reason}
     end
+  end
+
+  # Naming a narrator is a write whose answer is the party read back. A character who is
+  # not in the party is refused by the repo — inside its transaction, so the refusal
+  # cannot leave the party with the narrator it had before taken away. The store decides
+  # nothing about membership here: it only speaks the repo's answer.
+  defp narrate(state, tenant_id, user_id, character_id) do
+    case set_role(state.party_repo, tenant_id, user_id, character_id) do
+      {:ok, _counts} ->
+        party_after_write(state, tenant_id, user_id)
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  # The party as the rows now say it. A write can leave no party behind — the members are
+  # the party — and that is `:not_found`, the same answer a read with no rows gives.
+  defp party_after_write(state, tenant_id, user_id) do
+    case members(state.party_repo, tenant_id, user_id) do
+      {:ok, []} -> {:error, :not_found}
+      {:ok, members} -> {:ok, party(members)}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  defp set_role(party_repo, tenant_id, user_id, character_id) do
+    safeguard("name the party's narrator", fn ->
+      party_repo.set_narrator(tenant_id, user_id, character_id)
+    end)
   end
 
   defp all_for_tenant(party_repo, tenant_id) do

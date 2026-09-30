@@ -7,6 +7,7 @@ defmodule BotArmyRpg.Handlers.PartyHandler do
   - `rpg.party.get` — the party and its companion roster
   - `rpg.party.add` — recruit a bot companion into the party
   - `rpg.party.remove` — take a companion out of the party
+  - `rpg.party.set_narrator` — name one member the party's narrator (`null` clears it)
 
   `rpg.party.auto_populate` is implemented here but deliberately **not** registered.
   The list of bot ids it recruits from is a hardcoded guess (`gtd`, `llm`) that does
@@ -107,6 +108,31 @@ defmodule BotArmyRpg.Handlers.PartyHandler do
       is_nil(user_id) -> {:error, :missing_user_id}
       is_nil(character_id) -> {:error, :missing_character_id}
       true -> party_store().remove_member(tenant_id, user_id, character_id)
+    end
+  end
+
+  # Naming the narrator is a write, and the store answers it with the party read back
+  # after the rows moved — so a caller is never handed the party its request implied.
+  #
+  # An absent `character_id` and an explicit `null` are different requests: the first is a
+  # caller who forgot to name anyone (`:missing_character_id`), the second is how the role
+  # is cleared. A member the party does not have is `:not_a_member` (the store refuses it),
+  # never a quiet promotion of nobody.
+  def handle_set_narrator(message) do
+    tenant_id = Map.get(message, "tenant_id") || BotArmyLibraryRuntime.Tenant.default_tenant_id()
+    user_id = Map.get(message, "user_id")
+
+    cond do
+      is_nil(user_id) -> {:error, :missing_user_id}
+      not Map.has_key?(message, "character_id") -> {:error, :missing_character_id}
+      true -> name_narrator(tenant_id, user_id, Map.get(message, "character_id"))
+    end
+  end
+
+  defp name_narrator(tenant_id, user_id, character_id) do
+    case party_store().set_narrator(tenant_id, user_id, character_id) do
+      {:ok, party} -> {:ok, enrich_party(party, tenant_id)}
+      {:error, reason} -> {:error, reason}
     end
   end
 

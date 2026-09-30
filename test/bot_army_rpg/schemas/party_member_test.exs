@@ -47,6 +47,14 @@ defmodule BotArmyRpg.Schemas.PartyMemberTest do
     assert Ecto.Changeset.get_field(changeset, :role) == "companion"
   end
 
+  test "narrator is the other role a member can hold" do
+    # That a party has *at most one* narrator is the store's rule and cannot be stated
+    # here — a changeset sees one row. What this file owns is the vocabulary.
+    changeset = PartyMember.changeset(%PartyMember{}, attrs(%{"role" => "narrator"}))
+
+    assert changeset.valid?
+  end
+
   test "an identity that is not a uuid is refused by the cast, not by Postgres" do
     changeset = PartyMember.changeset(%PartyMember{}, attrs(%{"user_id" => "her"}))
 
@@ -69,7 +77,7 @@ defmodule BotArmyRpg.Schemas.PartyMemberTest do
     assert {"can't be blank", _} = changeset.errors[:tenant_id]
   end
 
-  test "a role that is not a companion is refused, and the error names the field" do
+  test "a role outside the party's vocabulary is refused, and the error names the field" do
     changeset = PartyMember.changeset(%PartyMember{}, attrs(%{"role" => "rival"}))
 
     refute changeset.valid?

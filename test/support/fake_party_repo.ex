@@ -3,7 +3,7 @@ defmodule BotArmyRpg.Test.FakePartyRepo do
   A party table that lives in ETS, with either half of the database able to fail.
 
   `BotArmyRpg.PartyRepo` is the only thing in the store that speaks to the party's
-  table, and it speaks four plain functions, so a stand-in answers those four and
+  table, and it speaks five plain functions, so a stand-in answers those five and
   nothing else. This
   one is not a fake Ecto: it runs the real changeset (validation is not a database
   feature) and it emulates the one rule a database owns, the unique membership.
@@ -97,8 +97,55 @@ defmodule BotArmyRpg.Test.FakePartyRepo do
     {:ok, length(doomed)}
   end
 
-  defp rows, do: :ets.tab2list(@table) |> Enum.map(&elem(&1, 1))
+  # The rule the store depends on, in one place: a character the party does not have is
+  # refused *before* anything moves — a refusal may not leave the party changed — and then
+  # every narrator is demoted and the named member promoted. `nil` names nobody.
+  def set_narrator(tenant_id, user_id, character_id) do
+    down_if_broken(@broken_writes, "name the party's narrator")
 
+    if is_binary(character_id) and not member?(tenant_id, user_id, character_id) do
+      {:error, :not_a_member}
+    else
+      {:ok,
+       %{
+         demoted: demote_narrators(tenant_id, user_id),
+         promoted: promote(tenant_id, user_id, character_id)
+       }}
+    end
+  end
+
+  defp demote_narrators(tenant_id, user_id) do
+    holding =
+      rows()
+      |> Enum.filter(&narrator_row?(&1, tenant_id, user_id))
+      |> Enum.map(&%{&1 | role: "companion"})
+
+    Enum.each(holding, &:ets.insert(@table, {&1.id, &1}))
+    length(holding)
+  end
+
+  defp promote(_tenant_id, _user_id, nil), do: 0
+
+  defp promote(tenant_id, user_id, character_id) do
+    row = row_for(tenant_id, user_id, character_id)
+    :ets.insert(@table, {row.id, %{row | role: "narrator"}})
+    1
+  end
+
+  defp narrator_row?(row, tenant_id, user_id) do
+    row.tenant_id == tenant_id and row.user_id == user_id and row.role == "narrator"
+  end
+
+  defp row_for(_tenant_id, _user_id, nil), do: nil
+
+  defp row_for(tenant_id, user_id, character_id) do
+    Enum.find(rows(), fn row ->
+      row.tenant_id == tenant_id and row.user_id == user_id and
+        row.character_id == character_id
+    end)
+  end
+
+  defp rows, do: :ets.tab2list(@table) |> Enum.map(&elem(&1, 1))
   defp oldest_first(rows), do: Enum.sort_by(rows, fn row -> {row.joined_at, row.id} end)
 
   defp ensure_id(row), do: %{row | id: row.id || Ecto.UUID.generate()}
