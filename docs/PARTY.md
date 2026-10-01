@@ -91,8 +91,9 @@ again.
 | `test/bot_army_rpg/party_store_db_test.exs` | `:stores` + `:integration` | real SQL, the real unique index, durability across a restart, the demote/promote transaction read off the rows, and a dropped table being a refusal |
 | `test/bot_army_rpg/handlers/party_handler_test.exs` | `:handlers` | the wire: the blank party's message names a registered route, and `null` vs an absent key are different requests |
 | `test/bot_army_rpg/party_read_test.exs` | `:core` | what a party read answers: no user never reaches the store, `:not_found` is an empty party rather than a refusal, and a refusing store is carried to the caller |
-| `test/bot_army_rpg/party_narration_test.exs` | `:core` | the ask's payload and subject, published through the `:nats_publisher` seam and asserted on the event |
-| `test/bot_army_rpg/handlers/gm_handler_test.exs` | `:handlers` | the wire of a turn: the GM's prose is signed `gm`; a party with a narrator is asked and no GM fact is written; a failing party read leaves the GM narrating |
+| `test/bot_army_rpg/party_narration_test.exs` | `:core` | the ask's payload and subject (published through the `:nats_publisher` seam and asserted on the event), and the note an ask writes: its content, and the asked `bot_id` read back out of it |
+| `test/bot_army_rpg/handlers/gm_handler_test.exs` | `:handlers` | the wire of a turn: the GM's prose is signed `gm`; a party with a narrator is asked, the note names her and no GM fact is written; an ask that cannot be published leaves the GM narrating; a failing party read leaves the GM narrating |
+| `test/bot_army_rpg/handlers/session_context_handler_test.exs` | `:handlers` | the window's read: turns are story (a note is not a turn), and `"narration"` reports the newest ask as pending, answered, or nothing at all |
 
 The DB test is excluded by default. It refuses to run against a database whose name does
 not end in `_test` (`BotArmyRpg.Test.PostgresHelper`), because its setup drops the
@@ -155,9 +156,10 @@ member holds the role*, never *the party could not be read*.
 
 ## The ask
 
-`GMHandler.apply_resolution/8` publishes **`rpg.narration.your_turn`** to the narrator and
-writes no fact for the turn. The payload names her and carries what the turn consists of,
-because there is nowhere else for it to be: with a narrator the GM's prose is not written.
+`GMHandler.apply_resolution/8` publishes the ask event **`rpg.narration.your_turn`** to the
+narrator and writes no fact for the turn. The payload names her and carries what the turn
+consists of, because there is nowhere else for it to be: with a narrator the GM's prose is
+not written.
 
 | Key | What it is |
 |-----|-----------|
@@ -179,15 +181,51 @@ Two failure rules hold this together:
   not take the table's words away, so the unread party is `nil` (the GM narrates) and the
   failure is logged by its kind alone — a dead call's reason carries its arguments, and
   those arguments are the party's key.
-- **The ask is a subject, and subjects need a subscriber.** No bot in the fleet subscribes
-  to `rpg.narration.your_turn` yet, so today a party that names a narrator has turns whose
-  words nobody writes. That is the honest absence, not a bug to paper over — but it is also
-  why the role is unset everywhere in the fleet, and why the answering half (a bot that
-  subscribes, plus the window's "she did not answer this turn") is the next slice.
+- **The ask leaves a note on the window.** A turn handed to her has no words yet, and a
+  window that only reads facts cannot tell that from a turn nobody ever narrated. So the
+  ask is written down as a note (`category: "narration_asked"`, `source: "system"`, content
+  `[narration_asked] <bot_id>`), and `gather_context` reports a `"narration"` field read
+  off the newest note — see *The words that have not arrived yet*. The note is not a turn:
+  it is signed `system`, so `SceneFactStore.story?/1` keeps it out of the carry and out of
+  the window's own turns.
+- **A bus that will not take the ask leaves the GM narrating.** If the publish fails, then
+  nothing reached her, so the GM narrates — the same rule as an unreadable party.
 
-`rpg.narration.your_turn` is an rpg event, not an `events.` topic: it is addressed to one
-bot rather than broadcast to the fleet, and `NATS.Publisher.derive_subject/1` carries it
-explicitly so the `events.rpg.` fallback cannot double-prefix it.
+### The subject on the wire
+
+The ask is an rpg event, and rpg's `NATS.Publisher.derive_subject/1` maps it explicitly to
+**`events.rpg.narration.your_turn`** — the `events.` name every rpg event is published
+under, which is what an `events.*` subscriber already knows from
+`events.reflection.captured`. The whitelist entry is not decoration: without it the
+`events.rpg.#{event_name}` fallback would publish on `events.rpg.rpg.narration.your_turn`.
+A bot that answers therefore subscribes to `events.rpg.narration.your_turn`; the name
+`rpg.narration.your_turn` elsewhere in this document is the *event*, one lookup away.
+
+`bot_army_companion` is the fleet's subscriber. It decodes the envelope with the fleet
+decoder, answers only an ask whose `bot_id` is its own, narrates from the window's log, and
+writes the turn as its own `rpg.scene.fact.add` signed with its own `bot_id` — the signer is
+the generator.
+
+## The words that have not arrived yet
+
+The window's turns are facts, so `rpg.session.gather_context` reports what it knows about
+the newest ask as a structured field, not as a line the reader has to recognise:
+
+| `context["narration"]` | What it means |
+|---|---|
+| `nil` | nothing was asked in what was read (the newest `fact_limit` facts hold no note) |
+| `%{"asked_of" => bot_id, "pending" => true}` | she was asked for the newest turn, and nothing has been written since |
+| `%{"asked_of" => bot_id, "pending" => false}` | she was asked, and a fact signed with her name is newer than the note |
+
+Two rules make the third row honest. "She answered" is a fact **newer** than the note whose
+`source` is the asked `bot_id` — a bot's turn is written by the bot, so the signer is the
+generator. And the field is derived from the *newest* note of the same bounded read as the
+turns, so it makes no claim about an ask older than the newest `fact_limit` facts.
+
+What a table does with `pending: true` is the table's business: the phone draws
+`(she says nothing)` — a sentence about the window, never words in her mouth. The key is
+always present (`nil` is an answer: nothing is pending), because a *failed* read returns no
+context at all.
 
 ## The companion's turn in the window
 
@@ -245,6 +283,7 @@ The turn the table reads and the narration the caller is told are compared in
   the caller on `events.rpg.scene.narrated` and the reply, and no fact — so a scene the GM
   narrates for the table is not a turn.
 - **A party that names a narrator has turns with no words until a bot answers.** The ask
-  ships (0.15.50) and the semantics with it — with a narrator the GM no longer writes the
-  turn — but no bot in the fleet subscribes to `rpg.narration.your_turn` yet, and the
-  window has no sentence for "she did not answer this turn". Both are the next slice.
+  ships (0.15.50), the note and the `"narration"` reading with it (0.15.51), and
+  `bot_army_companion` is the subscriber. A narrator whose bot is down, or a party whose
+  narrator is a bot that does not answer, still leaves the window with `pending: true` —
+  the honest absence, and what the window's `(she says nothing)` is for.

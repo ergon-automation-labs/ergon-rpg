@@ -16,11 +16,26 @@ defmodule BotArmyRpg.PartyNarration do
   so it does not pretend she did: it writes no fact, and its reply says the narration is
   `nil` with the narrator named. What a table shows while a turn has no words yet is the
   window's own reading (see `docs/PARTY.md`, "Whose name is on the words").
+
+  ## The note the ask leaves
+
+  An ask is also written down, as a note on the window itself. The note is not words and
+  never becomes story: it is signed `"system"`, so `SceneFactStore.story?/1` leaves it out
+  of the carry and the window's own read leaves it out of its turns. What it is for is the
+  *pending* reading a table needs: while the newest thing in a window is a note asking her
+  for this turn, her words have not arrived, and the table can say that instead of showing
+  a turn with nothing in it (the `"narration"` field of `rpg.session.gather_context`).
   """
 
   alias BotArmyRpg.NATS.Publisher
 
   @subject "rpg.narration.your_turn"
+
+  # The note an ask leaves on the window. A note says what it is in its own first word —
+  # the `[verification]` convention — so the mark is that word, and the category is the
+  # same name as a field, for the reader that takes the fact apart instead of reading it.
+  @asked_category "narration_asked"
+  @asked_mark "[narration_asked]"
 
   @doc """
   Ask `member` to narrate the turn `turn` describes, in `session`.
@@ -59,6 +74,46 @@ defmodule BotArmyRpg.PartyNarration do
 
   @doc "The subject the ask is published on."
   def subject, do: @subject
+
+  @doc "The category of the note an ask leaves on the window."
+  def asked_category, do: @asked_category
+
+  @doc """
+  Is this scene fact the note an ask left?
+
+  Read off the category, not off the content: this is the ask's own bookkeeping, and a
+  prose turn that happened to open with the mark is not a note.
+  """
+  def asked?(fact), do: fact["category"] == @asked_category
+
+  @doc """
+  The content of the note that records asking `member` for a turn.
+
+  The window reads its turns off `content`, so the note says whom it asked behind the
+  mark: a note that only said "asked" would not say who was asked.
+  """
+  def note_content(member), do: "#{@asked_mark} #{member["bot_id"]}"
+
+  @doc """
+  Who a note asked, read back out of it.
+
+  The inverse of `note_content/1`, and nothing else: `nil` for a fact that is not a note's
+  content, and `nil` for a note that names nobody.
+  """
+  def asked_of(fact) do
+    content = fact["content"]
+
+    if is_binary(content) and String.starts_with?(String.trim_leading(content), @asked_mark) do
+      content
+      |> String.trim_leading()
+      |> String.replace_prefix(@asked_mark, "")
+      |> String.trim()
+      |> blank_to_nil()
+    end
+  end
+
+  defp blank_to_nil(""), do: nil
+  defp blank_to_nil(bot_id), do: bot_id
 
   defp turn_round(session), do: get_in(session, ["metadata", "turn_state", "round"])
 

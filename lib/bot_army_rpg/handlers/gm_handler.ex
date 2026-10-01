@@ -269,7 +269,7 @@ defmodule BotArmyRpg.Handlers.GMHandler do
     narration =
       case narrator do
         nil -> gm_turn(session_id, tenant_id, theme, turn)
-        member -> ask_narrator(member, session, tenant_id, turn)
+        member -> ask_narrator(member, session, tenant_id, theme, turn)
       end
 
     # Publish event
@@ -343,9 +343,48 @@ defmodule BotArmyRpg.Handlers.GMHandler do
   # The narrator is a member: the words are hers, so the GM writes none of them. She is
   # asked once and never awaited — rpg cannot know whether she answers, so it reports the
   # turn as having no narration yet rather than inventing one.
-  defp ask_narrator(member, session, tenant_id, turn) do
-    PartyNarration.ask(member, session, tenant_id, turn)
-    nil
+  #
+  # The ask is also written down, as a note on the window (`note_the_ask/3`): the window
+  # reads its turns off the facts, so a turn that was handed to her and has no words yet
+  # looks exactly like a turn nobody ever narrated. The note is what the window's pending
+  # reading is built from (`SessionContextHandler`).
+  #
+  # A bus that will not take the ask is not a narrator who stayed silent: nothing reached
+  # her, so the GM narrates, exactly as when the party cannot be read at all.
+  defp ask_narrator(member, session, tenant_id, theme, turn) do
+    case PartyNarration.ask(member, session, tenant_id, turn) do
+      :ok ->
+        note_the_ask(member, session, tenant_id)
+        nil
+
+      {:error, reason} ->
+        Logger.warning(
+          "[GM] Narration ask not published: #{inspect(PartyRead.shape(reason))}; the GM narrates"
+        )
+
+        gm_turn(session["id"], tenant_id, theme, turn)
+    end
+  end
+
+  # The machinery speaking is not a person in the scene, so the note is signed `"system"`:
+  # that is what keeps it out of the carry (`SceneFactStore.story?/1`) and out of the
+  # window's turns, while `PartyNarration.asked?/1` still finds it in the facts. A note that
+  # could not be written is reported by its kind and nothing else — the turn is not lost
+  # because its bookkeeping failed.
+  defp note_the_ask(member, session, tenant_id) do
+    case scene_fact_store().append(%{
+           "session_id" => session["id"],
+           "tenant_id" => tenant_id,
+           "content" => PartyNarration.note_content(member),
+           "category" => PartyNarration.asked_category(),
+           "source" => "system"
+         }) do
+      {:ok, _note} ->
+        :ok
+
+      {:error, reason} ->
+        Logger.warning("[GM] The ask could not be noted: #{inspect(PartyRead.shape(reason))}")
+    end
   end
 
   defp publish_turn_started(session, actor, tenant_id) do

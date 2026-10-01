@@ -26,6 +26,23 @@ defmodule BotArmyRpg.Handlers.GMHandlerTest do
   import Mox
 
   alias BotArmyRpg.Handlers.GMHandler
+  alias BotArmyRpg.PartyNarration
+
+  # A bus that takes the ask (the publish is not what these tests are about), and a bus
+  # that will not — rpg's own wrapper's shape for a publish that failed. `request/3` is the
+  # other half of the seam (`GM.Dice` asks the bridge for a roll): both answer "no bridge",
+  # so the dice fall back to the local roller exactly as they do without a broker.
+  defmodule OkPublisher do
+    @moduledoc false
+    def publish(_subject, _payload, _opts), do: :ok
+    def request(_subject, _payload, _opts), do: {:error, :no_bridge}
+  end
+
+  defmodule DownPublisher do
+    @moduledoc false
+    def publish(_subject, _payload, _opts), do: {:error, :no_connection_manager}
+    def request(_subject, _payload, _opts), do: {:error, :no_bridge}
+  end
 
   @tenant "00000000-0000-0000-0000-000000000001"
   @session "00000000-0000-0000-0000-0000000000se"
@@ -297,23 +314,27 @@ defmodule BotArmyRpg.Handlers.GMHandlerTest do
       stub(BotArmyRpg.SceneFactStoreMock, :list_for_session, fn _tenant, _session -> {:ok, []} end)
     end
 
-    test "a party that names a narrator is asked, and the GM writes none of the words" do
+    test "a party that names a narrator is asked, and the only thing written is the note that names her" do
       stub_session()
       stub_table()
+      bus_takes_the_ask()
 
       expect(BotArmyRpg.PartyStoreMock, :get_party, fn _tenant, @user ->
-        {:ok,
-         %{
-           "members" => [
-             %{"character_id" => "c-narrator", "bot_id" => "companion_bot", "role" => "narrator"}
-           ]
-         }}
+        {:ok, %{"members" => [narrator_member()]}}
       end)
 
-      # A stub and not an expectation: the point is that it is never reached.
-      stub(BotArmyRpg.SceneFactStoreMock, :append, fn fact ->
+      # Exactly once, and it is the note: the words are hers to write, if she writes them,
+      # so no fact carries a sentence in her name. A stub would not prove that — an
+      # `expect` fails if the turn writes prose as well.
+      expect(BotArmyRpg.SceneFactStoreMock, :append, fn fact ->
+        assert fact["content"] == PartyNarration.note_content(narrator_member())
+        assert fact["category"] == PartyNarration.asked_category()
+        assert fact["source"] == "system"
+        assert fact["session_id"] == @session
+        assert fact["tenant_id"] == @tenant
+
         send(self(), {:appended, fact})
-        {:ok, %{}}
+        {:ok, Map.put(fact, "id", "note-1")}
       end)
 
       assert {:ok, result} =
@@ -324,12 +345,61 @@ defmodule BotArmyRpg.Handlers.GMHandlerTest do
                  })
                )
 
-      refute_received {:appended, _}
+      assert_received {:appended, note}
+      assert note["content"] == "[narration_asked] companion_bot"
 
       # The words are hers to write, if she writes them: rpg reports the turn as having
       # none rather than inventing prose and signing it.
       assert result["narration"] == nil
       assert result["narrator"] == "companion_bot"
+    end
+
+    test "an ask that cannot be published leaves the GM narrating" do
+      stub_session()
+      stub_table()
+      bus_will_not_take_the_ask()
+
+      expect(BotArmyRpg.PartyStoreMock, :get_party, fn _tenant, @user ->
+        {:ok, %{"members" => [narrator_member()]}}
+      end)
+
+      # Nothing reached her, so nothing is pending and the note is not written: the one
+      # append is the GM's prose. A bus that is down must not take the table's words away.
+      expect(BotArmyRpg.SceneFactStoreMock, :append, fn fact ->
+        send(self(), {:appended, fact})
+        {:ok, Map.put(fact, "id", "f-1")}
+      end)
+
+      assert {:ok, result} =
+               GMHandler.handle_action_resolve(
+                 payload(%{
+                   "character_id" => @character,
+                   "action" => %{"action_type" => "inspect"}
+                 })
+               )
+
+      assert_received {:appended, fact}
+      assert fact["source"] == "gm"
+      assert fact["content"] == result["narration"]
+      refute fact["content"] == PartyNarration.note_content(narrator_member())
+
+      # She is still the party's narrator — the report does not become "nobody narrates"
+      # just because rpg could not reach her.
+      assert result["narrator"] == "companion_bot"
+    end
+
+    defp narrator_member do
+      %{"character_id" => "c-narrator", "bot_id" => "companion_bot", "role" => "narrator"}
+    end
+
+    defp bus_takes_the_ask do
+      Application.put_env(:bot_army_rpg, :nats_publisher, OkPublisher)
+      on_exit(fn -> Application.delete_env(:bot_army_rpg, :nats_publisher) end)
+    end
+
+    defp bus_will_not_take_the_ask do
+      Application.put_env(:bot_army_rpg, :nats_publisher, DownPublisher)
+      on_exit(fn -> Application.delete_env(:bot_army_rpg, :nats_publisher) end)
     end
 
     test "a party read that fails leaves the GM narrating, not the turn wordless" do

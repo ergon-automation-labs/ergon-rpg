@@ -5,6 +5,7 @@ defmodule BotArmyRpg.Handlers.SessionContextHandlerTest do
   import Mox
 
   alias BotArmyRpg.Handlers.SessionContextHandler
+  alias BotArmyRpg.PartyNarration
 
   setup :verify_on_exit!
 
@@ -738,5 +739,132 @@ defmodule BotArmyRpg.Handlers.SessionContextHandlerTest do
     assert context["character"]["name"] == "The Lorekeeper"
     assert context["session"]["scene_description"] == "probe"
     assert context["party"] == %{}
+  end
+
+  # ───────────────────────────────────────────────────────────────────────
+  # The words that have not arrived yet (narration)
+  # ───────────────────────────────────────────────────────────────────────
+
+  defp narration_session(tenant, user, session_id, facts) do
+    Mox.expect(BotArmyRpg.SessionStoreMock, :get, fn ^tenant, ^session_id ->
+      {:ok,
+       %{
+         "id" => session_id,
+         "tenant_id" => tenant,
+         "user_id" => user,
+         "status" => "active",
+         "scene_description" => "a hall with one long table"
+       }}
+    end)
+
+    Mox.expect(BotArmyRpg.SceneFactStoreMock, :list_for_session, fn ^tenant, ^session_id ->
+      {:ok, facts}
+    end)
+
+    Mox.stub(BotArmyRpg.CharacterStoreMock, :get_by_bot_id, fn ^tenant, _bot ->
+      {:error, :not_found}
+    end)
+
+    Mox.expect(BotArmyRpg.ThemeStoreMock, :get_current, fn ^tenant -> {:error, :not_found} end)
+  end
+
+  defp gather(tenant, user, session_id) do
+    SessionContextHandler.handle_gather_context(%{
+      "payload" => %{"tenant_id" => tenant, "user_id" => user, "session_id" => session_id}
+    })
+  end
+
+  defp note(id, bot_id) do
+    %{
+      "id" => id,
+      "content" => PartyNarration.note_content(%{"bot_id" => bot_id}),
+      "category" => PartyNarration.asked_category(),
+      "source" => "system",
+      "created_at" => "2026-10-01T12:00:00"
+    }
+  end
+
+  defp turn(id, content, source) do
+    %{
+      "id" => id,
+      "content" => content,
+      "source" => source,
+      "created_at" => "2026-10-01T12:00:00"
+    }
+  end
+
+  test "a note asking her is not a turn, and the newest ask is pending" do
+    tenant = "00000000-0000-0000-0000-000000000099"
+    user = "00000000-0000-0000-0000-0000000000aa"
+    session_id = "00000000-0000-0000-0000-0000000000cc"
+
+    narration_session(tenant, user, session_id, [
+      note("note-2", "companion_bot"),
+      %{
+        "id" => "f-2",
+        "content" => "[verification] rpg xp ledger",
+        "source" => "operator",
+        "created_at" => "2026-10-01T11:00:00"
+      },
+      note("note-1", "gtd_bot"),
+      turn("f-1", "the GM closed the door", "gm")
+    ])
+
+    assert {:ok, context} = gather(tenant, user, session_id)
+
+    # A note is machinery, not something that happened in the scene — and neither is a
+    # note from another kind of machinery.
+    assert context["scene_facts"] == ["the GM closed the door"]
+
+    # The newest ask is the one read, so an older ask for another bot is not what this
+    # window is waiting on.
+    assert context["narration"] == %{"asked_of" => "companion_bot", "pending" => true}
+  end
+
+  test "a turn signed with her name is her answer" do
+    tenant = "00000000-0000-0000-0000-000000000099"
+    user = "00000000-0000-0000-0000-0000000000aa"
+    session_id = "00000000-0000-0000-0000-0000000000cc"
+
+    narration_session(tenant, user, session_id, [
+      turn("f-3", "she looked up from the ledger", "companion_bot"),
+      note("note-1", "companion_bot"),
+      turn("f-1", "the GM closed the door", "gm")
+    ])
+
+    assert {:ok, context} = gather(tenant, user, session_id)
+
+    assert context["scene_facts"] == ["she looked up from the ledger", "the GM closed the door"]
+    assert context["narration"] == %{"asked_of" => "companion_bot", "pending" => false}
+  end
+
+  test "a turn someone else wrote is not her answer" do
+    tenant = "00000000-0000-0000-0000-000000000099"
+    user = "00000000-0000-0000-0000-0000000000aa"
+    session_id = "00000000-0000-0000-0000-0000000000cc"
+
+    narration_session(tenant, user, session_id, [
+      turn("f-3", "the Taskmaster counted the party's blades", "gtd_bot"),
+      note("note-1", "companion_bot")
+    ])
+
+    assert {:ok, context} = gather(tenant, user, session_id)
+
+    assert context["narration"] == %{"asked_of" => "companion_bot", "pending" => true}
+  end
+
+  test "a window nobody has been asked about reports no narration at all" do
+    tenant = "00000000-0000-0000-0000-000000000099"
+    user = "00000000-0000-0000-0000-0000000000aa"
+    session_id = "00000000-0000-0000-0000-0000000000cc"
+
+    narration_session(tenant, user, session_id, [turn("f-1", "the GM closed the door", "gm")])
+
+    assert {:ok, context} = gather(tenant, user, session_id)
+
+    # The key is there and it is `nil`: nothing is pending, which is not the same answer as
+    # a read that failed (a failed read returns no context at all).
+    assert Map.has_key?(context, "narration")
+    assert context["narration"] == nil
   end
 end

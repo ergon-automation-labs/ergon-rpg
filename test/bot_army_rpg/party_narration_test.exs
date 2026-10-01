@@ -64,6 +64,33 @@ defmodule BotArmyRpg.PartyNarrationTest do
     end
   end
 
+  describe "the note an ask leaves" do
+    test "names whom it asked, and reads that name back" do
+      content = PartyNarration.note_content(@member)
+      fact = %{"content" => content, "category" => PartyNarration.asked_category()}
+
+      assert content == "[narration_asked] companion_bot"
+      assert PartyNarration.asked?(fact)
+      assert PartyNarration.asked_of(fact) == "companion_bot"
+    end
+
+    test "a turn is not a note: the category decides it, not the opening word" do
+      marked_prose = %{
+        "content" => "[narration_asked] is what I would have said",
+        "category" => "dialogue"
+      }
+
+      refute PartyNarration.asked?(marked_prose)
+    end
+
+    test "a fact that is nobody's note names nobody" do
+      assert PartyNarration.asked_of(%{"content" => "the door closed"}) == nil
+      assert PartyNarration.asked_of(%{"content" => ""}) == nil
+      assert PartyNarration.asked_of(%{"content" => "[narration_asked]   "}) == nil
+      assert PartyNarration.asked_of(%{}) == nil
+    end
+  end
+
   describe "ask/4" do
     test "is published on the narrator's subject, in the tenant, with the payload" do
       assert :ok =

@@ -9,7 +9,7 @@ defmodule BotArmyRpg.Handlers.SessionContextHandler do
 
   require Logger
 
-  alias BotArmyRpg.PartyRead
+  alias BotArmyRpg.{PartyNarration, PartyRead}
 
   defp session_store do
     Application.get_env(:bot_army_rpg, :session_store, BotArmyRpg.SessionStore)
@@ -68,7 +68,8 @@ defmodule BotArmyRpg.Handlers.SessionContextHandler do
           "session_metadata" => session["metadata"] || %{},
           "character" => character,
           "theme" => theme,
-          "scene_facts" => Enum.map(facts, & &1["content"]),
+          "scene_facts" => story_contents(facts),
+          "narration" => narration(facts),
           "tenant_id" => tenant_id,
           "user_id" => user_id
         }
@@ -187,6 +188,44 @@ defmodule BotArmyRpg.Handlers.SessionContextHandler do
     end
   end
 
+  # The window's turns: what people said in it. A fact the machinery wrote (`"system"`) is
+  # not a turn — the note rpg leaves when it hands a turn to a narrator is one of those —
+  # and `SceneFactStore.story?/1` is the one place that decides what counts as story. It is
+  # called as the pure function it is (no store, no database), so a store double does not
+  # have to answer for it. Both window reads use it, so a note cannot be a turn in one and
+  # not in the other.
+  defp story_contents(facts) do
+    facts
+    |> Enum.filter(&BotArmyRpg.SceneFactStore.story?/1)
+    |> Enum.map(& &1["content"])
+  end
+
+  # Whether the newest ask in this window has an answer yet. Three answers: no ask in what
+  # was read (`nil`), an ask with nothing written since (`"pending" => true`), and an ask she
+  # has since written for (`"pending" => false`). `asked_of` names her in all of them, so a
+  # table can say whose words are missing rather than only that some are.
+  #
+  # The *newest* ask is the one that matters (`facts` is newest first), and "she answered" is
+  # a fact newer than the ask signed with her name: a bot's turn is written by the bot, so the
+  # fact's `source` is the bot that wrote it (docs/PARTY.md, "Whose name is on the words").
+  # The read is bounded by the same `fact_limit` as the turns: an ask older than the newest
+  # `fact_limit` facts is not in this read at all.
+  defp narration(facts) do
+    case Enum.find(facts, &PartyNarration.asked?/1) do
+      nil ->
+        nil
+
+      ask ->
+        asked_of = PartyNarration.asked_of(ask)
+        newer = Enum.take_while(facts, &(&1["id"] != ask["id"]))
+
+        %{
+          "asked_of" => asked_of,
+          "pending" => not Enum.any?(newer, &(&1["source"] == asked_of))
+        }
+    end
+  end
+
   defp refuse_bad_store_answer do
     Logger.error("[SessionContextHandler] Session store answered something unreadable; refusing")
     {:error, :bad_store_answer}
@@ -273,7 +312,7 @@ defmodule BotArmyRpg.Handlers.SessionContextHandler do
             "scene_description" => session["scene_description"],
             "metadata" => session["metadata"] || %{}
           },
-          "scene_facts" => Enum.map(facts, & &1["content"]),
+          "scene_facts" => story_contents(facts),
           "theme" => theme,
           "party" => party
         }
