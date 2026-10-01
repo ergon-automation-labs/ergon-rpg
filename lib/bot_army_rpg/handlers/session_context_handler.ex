@@ -9,6 +9,8 @@ defmodule BotArmyRpg.Handlers.SessionContextHandler do
 
   require Logger
 
+  alias BotArmyRpg.PartyRead
+
   defp session_store do
     Application.get_env(:bot_army_rpg, :session_store, BotArmyRpg.SessionStore)
   end
@@ -23,10 +25,6 @@ defmodule BotArmyRpg.Handlers.SessionContextHandler do
 
   defp theme_store do
     Application.get_env(:bot_army_rpg, :theme_store, BotArmyRpg.ThemeStore)
-  end
-
-  defp party_store do
-    Application.get_env(:bot_army_rpg, :party_store, BotArmyRpg.PartyStore)
   end
 
   @doc """
@@ -100,7 +98,7 @@ defmodule BotArmyRpg.Handlers.SessionContextHandler do
   defp maybe_party(context, tenant_id, user_id) do
     case fetch_party(tenant_id, user_id) do
       {:ok, party} -> Map.put(context, "party", party)
-      {:error, reason} -> unreported_party(context, inspect(shape(reason)))
+      {:error, reason} -> unreported_party(context, inspect(PartyRead.shape(reason)))
     end
   rescue
     e ->
@@ -109,7 +107,7 @@ defmodule BotArmyRpg.Handlers.SessionContextHandler do
       # the detail itself ([PartyStore] Could not …).
       unreported_party(context, "raised #{inspect(e.__struct__)}")
   catch
-    :exit, reason -> unreported_party(context, "exited #{inspect(shape(reason))}")
+    :exit, reason -> unreported_party(context, "exited #{inspect(PartyRead.shape(reason))}")
   end
 
   # The story so far: the newest turns of this identity's *other* windows, so a window
@@ -301,26 +299,10 @@ defmodule BotArmyRpg.Handlers.SessionContextHandler do
     end
   end
 
-  # A party is keyed by {tenant_id, user_id}. A character with no user — the live
-  # `gtd_bot` character carries `user_id: nil` (2026-09-29) — has no party for the read
-  # to report, and `nil` is not a key the store answers for: asking it anyway raised,
-  # which took the Consumer process down with it and left the caller with silence.
-  # The read reports no party; it does not manufacture one out of a question the store
-  # was never able to answer.
-  defp fetch_party(_tenant_id, nil), do: {:ok, %{}}
-
-  defp fetch_party(tenant_id, user_id) do
-    case party_store().get_party(tenant_id, user_id) do
-      {:ok, party} -> {:ok, party}
-      {:error, :not_found} -> {:ok, %{}}
-      {:error, reason} -> {:error, reason}
-    end
-  end
-
-  # A dead store's reason is a tuple whose tail is the call that died, and the arguments
-  # of that call are the party's key. A log line records the shape, never the key (N+64).
-  defp shape(reason) when is_tuple(reason), do: elem(reason, 0)
-  defp shape(reason), do: reason
+  # The read and its refusals live in one place now that a turn's narration asks the
+  # same question (`BotArmyRpg.PartyRead`): one idea of what a party is, and one mapping
+  # of what its absence means.
+  defp fetch_party(tenant_id, user_id), do: PartyRead.read(tenant_id, user_id)
 
   defp unreported_party(context, what) do
     Logger.warning("[SessionContext] Party unread: #{what}; carrying nil")

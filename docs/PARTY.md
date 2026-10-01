@@ -90,6 +90,9 @@ again.
 | `test/bot_army_rpg/schemas/party_member_test.exs` | `:schemas` | the membership's own shape: uuids, required fields, the role vocabulary, the declared constraint |
 | `test/bot_army_rpg/party_store_db_test.exs` | `:stores` + `:integration` | real SQL, the real unique index, durability across a restart, the demote/promote transaction read off the rows, and a dropped table being a refusal |
 | `test/bot_army_rpg/handlers/party_handler_test.exs` | `:handlers` | the wire: the blank party's message names a registered route, and `null` vs an absent key are different requests |
+| `test/bot_army_rpg/party_read_test.exs` | `:core` | what a party read answers: no user never reaches the store, `:not_found` is an empty party rather than a refusal, and a refusing store is carried to the caller |
+| `test/bot_army_rpg/party_narration_test.exs` | `:core` | the ask's payload and subject, published through the `:nats_publisher` seam and asserted on the event |
+| `test/bot_army_rpg/handlers/gm_handler_test.exs` | `:handlers` | the wire of a turn: the GM's prose is signed `gm`; a party with a narrator is asked and no GM fact is written; a failing party read leaves the GM narrating |
 
 The DB test is excluded by default. It refuses to run against a database whose name does
 not end in `_test` (`BotArmyRpg.Test.PostgresHelper`), because its setup drops the
@@ -137,30 +140,62 @@ That is a role, not a turn. `rpg.party.set_narrator` names one member, and
 has: the member whose `role` is `narrator`. The rule that keeps it singular lives in one
 transaction in `PartyRepo.set_narrator/3`; a new narrator demotes the one before her.
 
-Two things this deliberately does **not** do:
+The role decides who narrates a turn. With a narrator, the turn's words are **hers**: rpg
+asks her and writes none of them itself (see *The ask* below). With no narrator the GM
+narrates, exactly as it always has.
 
-- **It does not write prose in the narrator's name.** `GM.Narrator` narrates for the
-  table and signs what it writes `source: "gm"`. It did not always: until 0.15.49
-  `apply_resolution/8` signed the acting character's `bot_id`, which put the theme's voice
-  in a bot's mouth. A member's name belongs on words the member wrote, and that write is
-  the next slice.
-- **It does not publish a narration request nobody answers.** No bot in the fleet
-  subscribes to any `rpg.*` subject yet, so a request event today would be a dead end that
-  looks like a wire. That wiring — the narrator's bot answering her own turn, including the
-  honest "she did not answer this turn" when it does not — is the next slice, and it needs
-  the bot-side subscriber to exist first.
+What the role never does is **write prose in the narrator's name**. `GM.Narrator` narrates
+for the table and signs what it writes `source: "gm"`. It did not always: until 0.15.49
+`apply_resolution/8` signed the acting character's `bot_id`, which put the theme's voice in
+a bot's mouth. A member's name belongs on words the member wrote, and the only writer of
+those words is the member's own bot.
 
-Until then the role is what it honestly is: data the party carries, so the window can
-badge who narrates. A party with no narrator is a normal party — `narrator/1` returns
-`nil`, which means *no member holds the role*, never *the party could not be read*.
+A party with no narrator is a normal party — `narrator/1` returns `nil`, which means *no
+member holds the role*, never *the party could not be read*.
+
+## The ask
+
+`GMHandler.apply_resolution/8` publishes **`rpg.narration.your_turn`** to the narrator and
+writes no fact for the turn. The payload names her and carries what the turn consists of,
+because there is nowhere else for it to be: with a narrator the GM's prose is not written.
+
+| Key | What it is |
+|-----|-----------|
+| `bot_id`, `character_id` | who is asked — the narrator's member record |
+| `session_id`, `scene_description` | which table, and the scene it is in |
+| `round` | the session's current round, or `nil` if no round was started |
+| `actor`, `action`, `resolution` | the turn itself: who acted, what they did, how it resolved |
+
+The ask is **published once and never awaited**. rpg cannot know whether she answers — she
+may be down, busy, or writing something longer than any timeout rpg could justify — so the
+resolve reply reports the turn as having no narration yet (`"narration" => nil`) plus
+`"narrator" => <bot_id>`, and never a sentence she did not write. Her answer is her own
+`rpg.scene.fact.add`, signed with her own name; that fact *is* the turn in the window,
+because scene facts are the only thing the window reads as a turn.
+
+Two failure rules hold this together:
+
+- **A party read that fails or raises leaves the GM narrating.** A store that is down must
+  not take the table's words away, so the unread party is `nil` (the GM narrates) and the
+  failure is logged by its kind alone — a dead call's reason carries its arguments, and
+  those arguments are the party's key.
+- **The ask is a subject, and subjects need a subscriber.** No bot in the fleet subscribes
+  to `rpg.narration.your_turn` yet, so today a party that names a narrator has turns whose
+  words nobody writes. That is the honest absence, not a bug to paper over — but it is also
+  why the role is unset everywhere in the fleet, and why the answering half (a bot that
+  subscribes, plus the window's "she did not answer this turn") is the next slice.
+
+`rpg.narration.your_turn` is an rpg event, not an `events.` topic: it is addressed to one
+bot rather than broadcast to the fleet, and `NATS.Publisher.derive_subject/1` carries it
+explicitly so the `events.rpg.` fallback cannot double-prefix it.
 
 ## The companion's turn in the window
 
 The window reads turns from **scene facts** and from nothing else (`gather_context` →
 `scene_facts` → the phone's reverse). So a companion is in the conversation exactly when
-something writes a fact in her name — which is why the narration *is* the turn: an action
-is narrated by `GM.Narrator` and that prose is written as one fact, `category:
-"narration"`.
+something writes a fact in her name — which is why the narration *is* the turn: the prose
+is written as one fact, `category: "narration"`, by `GM.Narrator` (with no narrator) or by
+the narrator's own bot (with one — see *The ask*).
 
 ## Whose name is on the words
 
@@ -171,7 +206,7 @@ The signer is the generator. The window draws `source` as the speaker (`party_wi
 |--------------------|-----------|
 | `gm` | the theme's narrator voice: `GMHandler.apply_resolution/8`, whether or not a bot plays the character — `GM.Narrator` asks the LLM as the Game Master and a template answers when the LLM is away, and both are the GM |
 | `operator` | her, from the phone (`party_window.ex`) |
-| a character's `bot_id` (e.g. `gtd_bot`) | that bot, *when the bot writes the turn itself* — no rpg path does this yet |
+| a character's `bot_id` (e.g. `gtd_bot`) | that bot, *when the bot writes the turn itself* — rpg asks the narrator to (see *The ask*); until a bot in the fleet answers, no fact has been written this way |
 | `system` | the machinery: not story, and excluded from the carry (`story?/1`) |
 
 Signing the GM's prose `gm` does not lose the actor: the prompt and the fallback both name
@@ -208,6 +243,8 @@ The turn the table reads and the narration the caller is told are compared in
   key for. Asking anyway raised, and that raise took the Consumer process down.
 - **`rpg.scene.narrate` still returns and publishes without writing.** Its prose reaches
   the caller on `events.rpg.scene.narrated` and the reply, and no fact — so a scene the GM
-  narrates for the table is not a turn. The narrator *role* exists now (0.15.48) and the
-  party carries it; making the role narrate is the next slice, and it needs a bot-side
-  subscriber to the narration request before publishing that request is worth anything.
+  narrates for the table is not a turn.
+- **A party that names a narrator has turns with no words until a bot answers.** The ask
+  ships (0.15.50) and the semantics with it — with a narrator the GM no longer writes the
+  turn — but no bot in the fleet subscribes to `rpg.narration.your_turn` yet, and the
+  window has no sentence for "she did not answer this turn". Both are the next slice.

@@ -30,6 +30,7 @@ defmodule BotArmyRpg.Handlers.GMHandlerTest do
   @tenant "00000000-0000-0000-0000-000000000001"
   @session "00000000-0000-0000-0000-0000000000se"
   @character "00000000-0000-0000-0000-0000000000ch"
+  @user "00000000-0000-0000-0000-000000000002"
 
   setup :verify_on_exit!
 
@@ -38,12 +39,18 @@ defmodule BotArmyRpg.Handlers.GMHandlerTest do
     Application.put_env(:bot_army_rpg, :character_store, BotArmyRpg.CharacterStoreMock)
     Application.put_env(:bot_army_rpg, :theme_store, BotArmyRpg.ThemeStoreMock)
     Application.put_env(:bot_army_rpg, :scene_fact_store, BotArmyRpg.SceneFactStoreMock)
+    Application.put_env(:bot_army_rpg, :party_store, BotArmyRpg.PartyStoreMock)
+
+    # No party unless a test says so: the sessions these routes read carry no user, so the
+    # read answers "no party" without asking the store (pinned in `PartyReadTest`).
+    Mox.stub(BotArmyRpg.PartyStoreMock, :get_party, fn _tenant, _user -> {:error, :not_found} end)
 
     on_exit(fn ->
       Application.delete_env(:bot_army_rpg, :session_store)
       Application.delete_env(:bot_army_rpg, :character_store)
       Application.delete_env(:bot_army_rpg, :theme_store)
       Application.delete_env(:bot_army_rpg, :scene_fact_store)
+      Application.delete_env(:bot_army_rpg, :party_store)
     end)
 
     :ok
@@ -249,6 +256,107 @@ defmodule BotArmyRpg.Handlers.GMHandlerTest do
 
       assert_received {:appended, fact}
       assert fact["source"] == "gm"
+    end
+  end
+
+  describe "the turn a narrator is asked for" do
+    # A session a party can be keyed by: the narrator is looked up under its user.
+    defp stub_session do
+      stub(BotArmyRpg.SessionStoreMock, :get, fn _tenant, _session ->
+        {:ok,
+         %{
+           "status" => "active",
+           "id" => @session,
+           "user_id" => @user,
+           "metadata" => %{"turn_state" => %{"round" => 2}},
+           "scene_description" => "a hall with one long table"
+         }}
+      end)
+
+      stub(BotArmyRpg.SessionStoreMock, :update, fn _tenant, _session, attrs -> {:ok, attrs} end)
+    end
+
+    defp stub_table do
+      stub(BotArmyRpg.CharacterStoreMock, :get, fn _tenant, @character ->
+        {:ok,
+         %{
+           "id" => @character,
+           "name" => "The Lorekeeper",
+           "class" => "Sage",
+           "bot_id" => "gtd_bot",
+           "stats" => %{}
+         }}
+      end)
+
+      stub(BotArmyRpg.CharacterStoreMock, :update, fn _tenant, _character, attrs ->
+        {:ok, attrs}
+      end)
+
+      stub(BotArmyRpg.ThemeStoreMock, :get_current, fn _tenant -> {:ok, %{}} end)
+
+      stub(BotArmyRpg.SceneFactStoreMock, :list_for_session, fn _tenant, _session -> {:ok, []} end)
+    end
+
+    test "a party that names a narrator is asked, and the GM writes none of the words" do
+      stub_session()
+      stub_table()
+
+      expect(BotArmyRpg.PartyStoreMock, :get_party, fn _tenant, @user ->
+        {:ok,
+         %{
+           "members" => [
+             %{"character_id" => "c-narrator", "bot_id" => "companion_bot", "role" => "narrator"}
+           ]
+         }}
+      end)
+
+      # A stub and not an expectation: the point is that it is never reached.
+      stub(BotArmyRpg.SceneFactStoreMock, :append, fn fact ->
+        send(self(), {:appended, fact})
+        {:ok, %{}}
+      end)
+
+      assert {:ok, result} =
+               GMHandler.handle_action_resolve(
+                 payload(%{
+                   "character_id" => @character,
+                   "action" => %{"action_type" => "inspect"}
+                 })
+               )
+
+      refute_received {:appended, _}
+
+      # The words are hers to write, if she writes them: rpg reports the turn as having
+      # none rather than inventing prose and signing it.
+      assert result["narration"] == nil
+      assert result["narrator"] == "companion_bot"
+    end
+
+    test "a party read that fails leaves the GM narrating, not the turn wordless" do
+      stub_session()
+      stub_table()
+
+      stub(BotArmyRpg.PartyStoreMock, :get_party, fn _tenant, _user ->
+        raise "the store is down"
+      end)
+
+      expect(BotArmyRpg.SceneFactStoreMock, :append, fn fact ->
+        send(self(), {:appended, fact})
+        {:ok, %{}}
+      end)
+
+      assert {:ok, result} =
+               GMHandler.handle_action_resolve(
+                 payload(%{
+                   "character_id" => @character,
+                   "action" => %{"action_type" => "inspect"}
+                 })
+               )
+
+      assert_received {:appended, fact}
+      assert fact["source"] == "gm"
+      assert fact["content"] == result["narration"]
+      assert result["narrator"] == nil
     end
   end
 end

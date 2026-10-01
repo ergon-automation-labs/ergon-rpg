@@ -6,6 +6,7 @@ defmodule BotArmyRpg.Handlers.GMHandler do
   require Logger
 
   alias BotArmyRpg.GM.{TurnManager, ActionResolver, BotPlayer, Narrator}
+  alias BotArmyRpg.{PartyNarration, PartyRead, PartyStore}
 
   defp session_store do
     Application.get_env(:bot_army_rpg, :session_store, BotArmyRpg.SessionStore)
@@ -247,31 +248,29 @@ defmodule BotArmyRpg.Handlers.GMHandler do
       _ -> :ok
     end
 
-    {:ok, narration} = Narrator.narrate_action(action, resolution, theme, character)
+    # Who narrates this turn. A party may hold one member in the `narrator` role, and
+    # then the turn's words are hers: rpg asks her (`PartyNarration.ask/4`) and writes
+    # none of them itself, so `narration` is nil here and her fact — signed with her
+    # name — is the turn, if and when she writes it.
+    #
+    # With no narrator the GM narrates, as it always has: `GM.Narrator` asks the LLM as
+    # "the Game Master narrating an action" and falls back to a template when the LLM is
+    # away, and both are the theme's voice, so the fact is signed `"gm"`. The window
+    # draws `source` as the speaker, so signing the acting character's `bot_id` would put
+    # words in a bot's mouth that no bot said (that line was 0.15.49's fix). The actor is
+    # not lost either way: the prompt and the fallback name her, and `turn_history`
+    # records her turn.
+    #
+    # A party the read could not answer leaves the GM narrating (`unread_party/1`): a
+    # store that is down must not take the table's words away.
+    narrator = narrator_of(session, tenant_id)
+    turn = %{"actor" => character, "action" => action, "resolution" => resolution}
 
-    # The narration is the turn. Scene facts are the only thing the window reads as a
-    # turn, so prose that is merely published (`events.rpg.action.resolved`) or handed
-    # back to the caller never reaches the table.
-    #
-    # The name on it is the GM's, because the GM wrote it. `GM.Narrator` asks as "the
-    # Game Master narrating an action" and falls back to a template when the LLM is
-    # away; both are the theme's voice, so signing the acting character's `bot_id`
-    # would put words in a bot's mouth that no bot said — and the window draws `source`
-    # as the speaker, so it could not tell. A turn in a bot's own name is written by
-    # that bot, which is the narrator slice's next half. The actor is not lost: the
-    # prompt and the fallback both name her, and `turn_history` records her turn.
-    #
-    # This replaced a mechanical line that was refused outright: the store reads
-    # `"content"` and it was sent as a key named `"fact"`, and `content` is required, so
-    # every bot turn was dropped in silence. The interpolation was not a fit turn either
-    # — it conjugated action types by appending "ed" ("The Bard inspireed the party").
-    scene_fact_store().append(%{
-      "session_id" => session_id,
-      "tenant_id" => tenant_id,
-      "content" => narration,
-      "category" => "narration",
-      "source" => "gm"
-    })
+    narration =
+      case narrator do
+        nil -> gm_turn(session_id, tenant_id, theme, turn)
+        member -> ask_narrator(member, session, tenant_id, turn)
+      end
 
     # Publish event
     BotArmyRpg.NATS.Publisher.publish(
@@ -291,8 +290,62 @@ defmodule BotArmyRpg.Handlers.GMHandler do
        "resolution" => resolution,
        "character_id" => character_id,
        "session_id" => session_id,
-       "narration" => narration
+       "narration" => narration,
+       "narrator" => narrator["bot_id"]
      }}
+  end
+
+  # The party's narrator, or nil. `PartyStore.narrator/1` is the only thing that decides
+  # who narrates; this must not spell a second answer.
+  defp narrator_of(session, tenant_id) do
+    case PartyRead.read(tenant_id, session["user_id"]) do
+      {:ok, party} -> PartyStore.narrator(party)
+      {:error, reason} -> unread_party(reason)
+    end
+  rescue
+    _ -> unread_party(:raised)
+  catch
+    :exit, _ -> unread_party(:down)
+  end
+
+  # A store that cannot answer is not a party with no narrator, but the turn still needs
+  # its words: the GM narrates, and the failure is visible by its kind — never by the
+  # arguments a dead call carries, which are the party's key (N+64).
+  defp unread_party(reason) do
+    Logger.warning("[GM] Party unread: #{inspect(PartyRead.shape(reason))}; the GM narrates")
+
+    nil
+  end
+
+  # The GM narrates: it writes the fact the window reads as a turn, and hands the same
+  # prose back to the caller. Scene facts are the only thing the window reads as a turn,
+  # so prose merely published (`events.rpg.action.resolved`) never reaches the table.
+  #
+  # This replaced a mechanical line that was refused outright: the store reads
+  # `"content"` and it was sent as a key named `"fact"`, and `content` is required, so
+  # every bot turn was dropped in silence. The interpolation was not a fit turn either
+  # — it conjugated action types by appending "ed" ("The Bard inspireed the party").
+  defp gm_turn(session_id, tenant_id, theme, turn) do
+    {:ok, narration} =
+      Narrator.narrate_action(turn["action"], turn["resolution"], theme, turn["actor"])
+
+    scene_fact_store().append(%{
+      "session_id" => session_id,
+      "tenant_id" => tenant_id,
+      "content" => narration,
+      "category" => "narration",
+      "source" => "gm"
+    })
+
+    narration
+  end
+
+  # The narrator is a member: the words are hers, so the GM writes none of them. She is
+  # asked once and never awaited — rpg cannot know whether she answers, so it reports the
+  # turn as having no narration yet rather than inventing one.
+  defp ask_narrator(member, session, tenant_id, turn) do
+    PartyNarration.ask(member, session, tenant_id, turn)
+    nil
   end
 
   defp publish_turn_started(session, actor, tenant_id) do
