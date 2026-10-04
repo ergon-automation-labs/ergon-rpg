@@ -28,17 +28,29 @@ defmodule BotArmyRpg.PartyNarration do
 
   ## The chat ask
 
-  A window's chat is the same window and the same narrator: a line someone types into it
-  is a scene fact like any other, and a conversation in which nobody ever answers is not a
-  conversation. `ask_chat/4` is the same ask for a line rather than a resolved turn — the
-  one subject, the same pending reading — and `"kind"` is what tells the two apart at the
-  far end, because the words a narrator is asked for are not the same words in both cases:
-  a turn wants prose about an action and its resolution, a chat line wants an answer to
-  what somebody said.
+  A window's chat is the same window: a line someone types into it is a scene fact like any
+  other, and a conversation in which nobody ever answers is not a conversation. `ask_chat/4`
+  is the same ask for a line rather than a resolved turn — the one subject, the same pending
+  reading — and `"kind"` is what tells the two apart at the far end, because the words a
+  member is asked for are not the same words in both cases: a turn wants prose about an
+  action and its resolution, a chat line wants an answer to what somebody said.
 
   A turn's ask is `"kind" => "turn"`; a chat's is `"kind" => "chat"` and carries the line
   and who said it. The field was added after the ask subject, so a reader that finds no
   kind at all is reading an older rpg and should treat it as a turn.
+
+  Who a chat line is handed to is not this module's answer — a turn is the narrator's, but
+  a chat line goes round the table (`PartyChat` picks it with `PartyRotation`) — and this
+  only asks the member it is given.
+
+  ## The note says which kind of ask it was
+
+  The note names its kind as well as the member (`[narration_asked] chat companion_bot`),
+  because the window's round is read off the *chat* notes alone (`last_asked/2`): a table
+  that resolved turns between chat lines would otherwise keep resetting the round to
+  whoever follows the narrator. A note written before the kind was recorded cannot say
+  which lane asked; those are read as turns (`asked_kind/1`), so at worst the round starts
+  one member early once.
   """
 
   alias BotArmyRpg.NATS.Publisher
@@ -49,6 +61,7 @@ defmodule BotArmyRpg.PartyNarration do
 
   @kind_turn "turn"
   @kind_chat "chat"
+  @kinds [@kind_turn, @kind_chat]
 
   # The machinery speaking is not a person in the scene: every note rpg writes is signed
   # this way, which is what keeps it out of the carry and out of the window's turns
@@ -72,7 +85,7 @@ defmodule BotArmyRpg.PartyNarration do
   the ask instead of sending it (the same seam `GM.Narrator` uses to reach NATS).
   """
   def ask(member, session, tenant_id, turn) do
-    publisher().publish(@subject, payload(member, session, turn), tenant_id: tenant_id)
+    publish(payload(member, session, turn), session["id"], tenant_id, @kind_turn)
   end
 
   @doc """
@@ -84,7 +97,22 @@ defmodule BotArmyRpg.PartyNarration do
   putting any in her mouth.
   """
   def ask_chat(member, session_id, tenant_id, fact) do
-    publisher().publish(@subject, chat_payload(member, session_id, fact), tenant_id: tenant_id)
+    publish(chat_payload(member, session_id, fact), session_id, tenant_id, @kind_chat)
+  end
+
+  # The ask and the note are one act: an ask that left no note would be an ask a table
+  # cannot see, so it is this module's business and never a caller's. Nothing publishes
+  # without a note, and a bus that would not take the ask writes none, because nobody was
+  # asked.
+  defp publish(event, session_id, tenant_id, kind) do
+    case publisher().publish(@subject, event, tenant_id: tenant_id) do
+      :ok ->
+        note_the_ask(%{"bot_id" => event["bot_id"]}, session_id, tenant_id, kind)
+        :ok
+
+      {:error, reason} ->
+        {:error, reason}
+    end
   end
 
   @doc """
@@ -110,18 +138,19 @@ defmodule BotArmyRpg.PartyNarration do
   @doc """
   Write down that `member` was asked, on the window itself.
 
-  One owner for the note, because the ask and the note are one act: an ask that left no
-  note would be an ask a table cannot see, and both callers of this module (a resolved
-  turn and a chat line) owe it the same note for the same pending reading.
+  One owner for the note, and in practice the ask writes it (`publish/4`), because the ask
+  and the note are one act: an ask that left no note would be an ask a table cannot see,
+  and both lanes (a resolved turn and a chat line) owe the same note for the same pending
+  reading. Public because a caller that asked by some other road still owes it.
 
   Best effort, and reported by its kind: the ask is already published, and a note that was
   not written costs the table its pending reading rather than costing anyone a turn.
   """
-  def note_the_ask(member, session_id, tenant_id) do
+  def note_the_ask(member, session_id, tenant_id, kind \\ @kind_turn) do
     case scene_fact_store().append(%{
            "session_id" => session_id,
            "tenant_id" => tenant_id,
-           "content" => note_content(member),
+           "content" => note_content(member, kind),
            "category" => @asked_category,
            "source" => @machine_source
          }) do
@@ -165,6 +194,12 @@ defmodule BotArmyRpg.PartyNarration do
   @doc "The category of the note an ask leaves on the window."
   def asked_category, do: @asked_category
 
+  @doc "The kind a chat ask is made in."
+  def chat_kind, do: @kind_chat
+
+  @doc "The kind a turn ask is made in."
+  def turn_kind, do: @kind_turn
+
   @doc """
   Is this scene fact the note an ask left?
 
@@ -174,30 +209,89 @@ defmodule BotArmyRpg.PartyNarration do
   def asked?(fact), do: fact["category"] == @asked_category
 
   @doc """
-  The content of the note that records asking `member` for a turn.
+  The content of the note that records asking `member`.
 
-  The window reads its turns off `content`, so the note says whom it asked behind the
-  mark: a note that only said "asked" would not say who was asked.
+  The window reads its turns off `content`, so the note says what kind of ask it was and
+  whom it asked behind the mark: a note that only said "asked" would not say who was
+  asked, and one that did not say the kind would let a turn's ask move the chat's round.
   """
-  def note_content(member), do: "#{@asked_mark} #{member["bot_id"]}"
+  def note_content(member, kind \\ @kind_turn),
+    do: "#{@asked_mark} #{kind} #{member["bot_id"]}"
 
   @doc """
   Who a note asked, read back out of it.
 
-  The inverse of `note_content/1`, and nothing else: `nil` for a fact that is not a note's
-  content, and `nil` for a note that names nobody.
+  The inverse of `note_content/2`, and nothing else: `nil` for a fact that is not a note's
+  content, and `nil` for a note that names nobody. A note with no kind in it is a note an
+  older rpg wrote, and its whole remainder is the member it names.
   """
   def asked_of(fact) do
+    case named_in(fact) do
+      nil -> nil
+      rest -> rest |> drop_kind() |> blank_to_nil()
+    end
+  end
+
+  @doc """
+  Which lane a note's ask was made in: `"turn"`, `"chat"`, or `nil` for a fact that is not
+  a note.
+
+  A note an older rpg wrote carries no kind and is read as a turn: the chat lane only
+  existed after this field, and no reader can tell a chat ask from a turn ask in a note
+  that does not say.
+  """
+  def asked_kind(fact) do
+    case named_in(fact) do
+      nil -> nil
+      rest -> rest |> split_kind() |> elem(0)
+    end
+  end
+
+  @doc """
+  The member the newest note of this `kind` names, or `nil`.
+
+  `facts` is a window's facts in the order they were written (`SceneFactStore`'s own
+  order), so the newest is the last one that matches. This is the chat's round: whom the
+  chat asked last (`PartyRotation`).
+  """
+  def last_asked(facts, kind) when is_list(facts) do
+    facts
+    |> Enum.filter(&(asked?(&1) and asked_kind(&1) == kind))
+    |> List.last()
+    |> case do
+      nil -> nil
+      note -> asked_of(note)
+    end
+  end
+
+  def last_asked(_facts, _kind), do: nil
+
+  # What follows the mark, trimmed; `nil` for a fact that is not a note at all. A *note* is
+  # the category's answer (`asked?/1`), so prose that merely opens with the mark is nobody's
+  # note and names nobody — the two readers below are only ever asked about notes.
+  defp named_in(fact) do
     content = fact["content"]
 
-    if is_binary(content) and String.starts_with?(String.trim_leading(content), @asked_mark) do
+    if asked?(fact) and is_binary(content) and
+         String.starts_with?(String.trim_leading(content), @asked_mark) do
       content
       |> String.trim_leading()
       |> String.replace_prefix(@asked_mark, "")
       |> String.trim()
-      |> blank_to_nil()
     end
   end
+
+  # `[narration_asked] <kind> <bot_id>` — and, for a note written before the kind was
+  # recorded, `[narration_asked] <bot_id>`. A member named `turn` or `chat` alone has no
+  # kind before it, so it is read as the member rather than as a kind with nobody after it.
+  defp split_kind(rest) do
+    case String.split(rest, " ", parts: 2) do
+      [kind, name] when kind in @kinds and name != "" -> {kind, name}
+      _other -> {@kind_turn, rest}
+    end
+  end
+
+  defp drop_kind(rest), do: rest |> split_kind() |> elem(1) |> String.trim()
 
   defp blank_to_nil(""), do: nil
   defp blank_to_nil(bot_id), do: bot_id

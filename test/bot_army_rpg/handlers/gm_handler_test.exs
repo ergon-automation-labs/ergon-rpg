@@ -327,7 +327,9 @@ defmodule BotArmyRpg.Handlers.GMHandlerTest do
       # so no fact carries a sentence in her name. A stub would not prove that — an
       # `expect` fails if the turn writes prose as well.
       expect(BotArmyRpg.SceneFactStoreMock, :append, fn fact ->
-        assert fact["content"] == PartyNarration.note_content(narrator_member())
+        assert fact["content"] ==
+                 PartyNarration.note_content(narrator_member(), PartyNarration.turn_kind())
+
         assert fact["category"] == PartyNarration.asked_category()
         assert fact["source"] == "system"
         assert fact["session_id"] == @session
@@ -346,7 +348,7 @@ defmodule BotArmyRpg.Handlers.GMHandlerTest do
                )
 
       assert_received {:appended, note}
-      assert note["content"] == "[narration_asked] companion_bot"
+      assert note["content"] == "[narration_asked] turn companion_bot"
 
       # The words are hers to write, if she writes them: rpg reports the turn as having
       # none rather than inventing prose and signing it.

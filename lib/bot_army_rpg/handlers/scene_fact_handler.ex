@@ -36,7 +36,7 @@ defmodule BotArmyRpg.Handlers.SceneFactHandler do
           user_id: user_id
         )
 
-        maybe_ask_chat(tenant_id, user_id, fact)
+        maybe_ask_chat(tenant_id, fact)
 
         {:ok, fact}
 
@@ -47,19 +47,19 @@ defmodule BotArmyRpg.Handlers.SceneFactHandler do
   end
 
   # The window is a conversation, and a conversation is not a monologue: a line that landed
-  # in a window whose party names a narrator is handed to her, the same way a resolved turn
-  # hands her one. `PartyChat` owns the rule about lines, `PartyNarration` the ask itself,
-  # and this only reports the outcome.
+  # in a window is handed to the member whose turn it is, the same way a resolved turn hands
+  # the narrator one. `PartyChat` owns the rule about lines and who answers them,
+  # `PartyNarration` the ask itself, and this only reports the outcome.
   #
   # Best effort, and logged by its kind: the line is already stored and the caller is being
   # told so, so an ask that did not go out is a member nobody asked — the window then says
-  # her words are not there yet, which is true — and never a lost line.
-  defp maybe_ask_chat(tenant_id, user_id, fact) do
+  # their words are not there yet, which is true — and never a lost line.
+  defp maybe_ask_chat(tenant_id, fact) do
     session_id = fact["session_id"] || fact["session"]
 
-    case PartyChat.maybe_ask(tenant_id, user_id, session_id, fact) do
+    case PartyChat.maybe_ask(tenant_id, session_id, fact) do
       {:asked, member} ->
-        Logger.info("[SceneFactHandler] Chat handed to the narrator #{member["bot_id"]}")
+        Logger.info("[SceneFactHandler] Chat handed to #{member["bot_id"]}")
 
       {:error, reason} ->
         Logger.warning(
@@ -67,7 +67,7 @@ defmodule BotArmyRpg.Handlers.SceneFactHandler do
             "#{inspect(PartyRead.shape(reason))}; nobody was asked"
         )
 
-      outcome when outcome in [:no_narrator, :own_words, :not_a_turn, :no_window, :unreadable] ->
+      outcome when outcome in [:no_members, :own_words, :not_a_turn, :no_window, :unreadable] ->
         :ok
     end
   end

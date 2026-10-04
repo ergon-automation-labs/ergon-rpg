@@ -4,7 +4,7 @@ defmodule BotArmyRpg.Handlers.SceneFactHandlerTest do
   @moduletag :handlers
 
   alias BotArmyRpg.Handlers.SceneFactHandler
-  alias BotArmyRpg.{Identity, PartyStoreMock, SceneFactStoreMock, SessionStoreMock}
+  alias BotArmyRpg.{SceneFactStoreMock, SessionStoreMock}
 
   defmodule StubPublisher do
     @moduledoc false
@@ -54,6 +54,11 @@ defmodule BotArmyRpg.Handlers.SceneFactHandlerTest do
         {:ok, %{"id" => session_id}}
       end)
 
+      # The line is also a line in the window's chat, and this window has nobody in it to
+      # answer it: answered here rather than left to fail, so the test says which refusal
+      # the handler took.
+      expect_the_table(session_id, %{})
+
       message = %{"payload" => %{"session_id" => session_id, "content" => "The door creaks open"}}
 
       assert {:ok, ^fact} = BotArmyRpg.Handlers.SceneFactHandler.handle_add(message)
@@ -69,6 +74,8 @@ defmodule BotArmyRpg.Handlers.SceneFactHandlerTest do
       expect(BotArmyRpg.SessionStoreMock, :touch, fn _tenant, ^session_id ->
         {:error, :not_found}
       end)
+
+      expect_the_table(session_id, %{})
 
       # Best effort: the turn is stored and told so; only the ordering is left stale,
       # and that is logged rather than hidden.
@@ -94,20 +101,18 @@ defmodule BotArmyRpg.Handlers.SceneFactHandlerTest do
     end)
   end
 
-  defp expect_party_narrated_by(bot_id) do
-    expect(PartyStoreMock, :get_party, fn _tenant, keyed ->
-      # The identity a window's line is written under is the name an operator uses for
-      # herself, and the party is keyed by the UUID that name normalizes to.
-      assert keyed == Identity.normalize_user_id("abby")
-
-      {:ok,
-       %{
-         "members" => [
-           %{"character_id" => "c-member", "bot_id" => "gtd_bot", "role" => "companion"},
-           %{"character_id" => "c-narrator", "bot_id" => bot_id, "role" => "narrator"}
-         ]
-       }}
+  defp expect_the_table(session_id, characters) do
+    expect(SessionStoreMock, :get, fn _tenant, ^session_id ->
+      {:ok, %{"id" => session_id, "character_ids" => characters}}
     end)
+  end
+
+  defp expect_history(history) do
+    expect(SceneFactStoreMock, :list_for_session, fn _tenant, _session_id -> {:ok, history} end)
+  end
+
+  defp chat_note(bot_id) do
+    %{"content" => "[narration_asked] chat #{bot_id}", "category" => "narration_asked"}
   end
 
   defp a_line(session_id, extra) do
@@ -116,23 +121,23 @@ defmodule BotArmyRpg.Handlers.SceneFactHandlerTest do
 
   describe "handle_add/1 and the window's chat" do
     setup do
-      Application.put_env(:bot_army_rpg, :party_store, PartyStoreMock)
       Application.put_env(:bot_army_rpg, :nats_publisher, StubPublisher)
 
-      on_exit(fn ->
-        Application.delete_env(:bot_army_rpg, :party_store)
-        Application.delete_env(:bot_army_rpg, :nats_publisher)
-      end)
+      on_exit(fn -> Application.delete_env(:bot_army_rpg, :nats_publisher) end)
 
       :ok
     end
 
-    test "a line in a window whose party names a narrator is handed to her, and noted" do
+    test "a line in a window is handed to the member whose turn it is, and noted" do
       session_id = Ecto.UUID.generate()
 
       stub_fact_store()
       expect_a_window(session_id)
-      expect_party_narrated_by("companion_bot")
+
+      # The window is the table and the round is the window's own history: whoever the chat
+      # asked last is where the round stands, so the line after them is the line at hand.
+      expect_the_table(session_id, %{"c-member" => "gtd_bot", "c-narrator" => "companion_bot"})
+      expect_history([chat_note("gtd_bot")])
 
       assert {:ok, fact} =
                SceneFactHandler.handle_add(%{
@@ -162,18 +167,19 @@ defmodule BotArmyRpg.Handlers.SceneFactHandlerTest do
       assert_received {:appended, note}
       assert note["category"] == "narration_asked"
       assert note["source"] == "system"
-      assert note["content"] == "[narration_asked] companion_bot"
+      assert note["content"] == "[narration_asked] chat companion_bot"
     end
 
-    test "a line in a window whose party names no narrator is stored and asks nobody" do
+    test "a line in a window nobody was put in is stored, and asks nobody" do
       session_id = Ecto.UUID.generate()
 
       stub_fact_store()
       expect_a_window(session_id)
 
-      expect(PartyStoreMock, :get_party, fn _tenant, _keyed ->
-        {:ok, %{"members" => [%{"character_id" => "c1", "bot_id" => "gtd_bot"}]}}
-      end)
+      # An empty table reads no history at all — there is no round to read a cursor for —
+      # so a history read here would be a Mox call with no expectation and the test would
+      # say the ask went looking for a turn nobody could take.
+      expect_the_table(session_id, %{})
 
       assert {:ok, _fact} =
                SceneFactHandler.handle_add(%{
@@ -206,7 +212,8 @@ defmodule BotArmyRpg.Handlers.SceneFactHandlerTest do
 
       stub_fact_store()
       expect_a_window(session_id)
-      expect_party_narrated_by("companion_bot")
+      expect_the_table(session_id, %{"c-narrator" => "companion_bot"})
+      expect_history([])
       Application.put_env(:bot_army_rpg, :nats_publisher, FailingPublisher)
 
       # The line is already stored by the time the ask is attempted, so an ask nobody

@@ -105,10 +105,11 @@ again.
 | `test/bot_army_rpg/party_store_db_test.exs` | `:stores` + `:integration` | real SQL, the real unique index, durability across a restart, the demote/promote transaction read off the rows, and a dropped table being a refusal |
 | `test/bot_army_rpg/handlers/party_handler_test.exs` | `:handlers` | the wire: the blank party's message names a registered route, and `null` vs an absent key are different requests |
 | `test/bot_army_rpg/party_read_test.exs` | `:core` | what a party read answers: no user never reaches the store, `:not_found` is an empty party rather than a refusal, a refusing store is carried to the caller, a name is keyed the way the routes key it, and who narrates is read from the party rather than invented |
-| `test/bot_army_rpg/party_narration_test.exs` | `:core` | the ask's payload and subject (published through the `:nats_publisher` seam and asserted on the event), the two kinds (`turn` vs `chat`), and the note an ask writes: its content, its signing, and the asked `bot_id` read back out of it |
-| `test/bot_army_rpg/party_chat_test.exs` | `:core` | the rule about lines: which facts are worth an answer, that only the narrator is asked, that her own words are not asked back, that a party with no narrator (or one that cannot be read) asks nobody, and what a chat ask puts on the wire |
+| `test/bot_army_rpg/party_narration_test.exs` | `:core` | the ask's payload and subject (published through the `:nats_publisher` seam and asserted on the event), the two kinds (`turn` vs `chat`), and the note an ask writes: its content (with the kind in it), its signing, the asked `bot_id` read back out of it, an old note with no kind in it, and the round's cursor (`last_asked/2`) |
+| `test/bot_army_rpg/party_rotation_test.exs` | `:core` | the round itself: the first ask, the round moving on, a cursor naming somebody who left, the author walked past, a table of one author, and an empty table |
+| `test/bot_army_rpg/party_chat_test.exs` | `:core` | the rule about lines: which facts are worth an answer, that the window's members are the table, that the round continues off the chat notes and not a turn's, that a table of one author answers `:own_words`, that a window with nobody in it answers `:no_members` and a window or history that cannot be read is `:unreadable` (not an empty table), and what a chat ask puts on the wire |
 | `test/bot_army_rpg/handlers/gm_handler_test.exs` | `:handlers` | the wire of a turn: the GM's prose is signed `gm`; a party with a narrator is asked, the note names her and no GM fact is written; an ask that cannot be published leaves the GM narrating; a failing party read leaves the GM narrating |
-| `test/bot_army_rpg/handlers/scene_fact_handler_test.exs` | `:handlers` | the wire of a line: it is stored and the window's clock moves; a line in a window whose party names a narrator is handed to her and noted; a party with no narrator, a note the machinery wrote, and an ask the bus would not take all leave the line stored and asked of nobody |
+| `test/bot_army_rpg/handlers/scene_fact_handler_test.exs` | `:handlers` | the wire of a line: it is stored and the window's clock moves; a line in a window is handed to the member whose turn it is and noted; a window nobody was put in, a note the machinery wrote, and an ask the bus would not take all leave the line stored and asked of nobody |
 | `test/bot_army_rpg/handlers/session_context_handler_test.exs` | `:handlers` | the window's read: turns are story (a note is not a turn), and `"narration"` reports the newest ask as pending, answered, or nothing at all |
 
 The DB test is excluded by default. It refuses to run against a database whose name does
@@ -172,20 +173,21 @@ member holds the role*, never *the party could not be read*.
 
 ## The ask
 
-Two things ask a narrator for words, on the same event and the same subject:
+Two things ask a member for words, on the same event and the same subject:
 
 - a **resolved turn** — `GMHandler.apply_resolution/8` publishes the ask and writes no fact
-  for the turn;
-- a **line in the window's chat** — `SceneFactHandler.handle_add/1` hands it to her after
-  storing it (see *The chat ask*).
+  for the turn. A turn is a narration, so it goes to the party's **narrator**;
+- a **line in the window's chat** — `SceneFactHandler.handle_add/1` hands it to the member
+  whose turn it is **at that window's table**, after storing it (see *The chat ask*).
 
-The payload names her and carries what the turn consists of, because there is nowhere else
-for it to be: with a narrator the GM's prose is not written.
+The payload names the member being asked and carries what the ask consists of, because
+there is nowhere else for it to be: with a narrator the GM's prose is not written, and a
+line in the chat is not a turn at all.
 
 | Key | What it is |
 |-----|-----------|
 | `kind` | which ask this is: `"turn"` or `"chat"` |
-| `bot_id`, `character_id` | who is asked — the narrator's member record |
+| `bot_id`, `character_id` | who is asked — the narrator's member record (**turns**), the member whose turn it is (**chat**) |
 | `session_id` | which table |
 | `scene_description` | the scene the table is in (**turns**; a chat ask does not carry it — the bot reads the window itself) |
 | `round` | the session's current round, or `nil` if no round was started (**turns** only) |
@@ -218,14 +220,18 @@ Three failure rules hold this together:
   not take the table's words away, so the unread party is `nil` (the GM narrates) and the
   failure is logged by its kind alone — a dead call's reason carries its arguments, and
   those arguments are the party's key.
-- **The ask leaves a note on the window.** A turn handed to her has no words yet, and a
-  window that only reads facts cannot tell that from a turn nobody ever narrated. So the
+- **The ask leaves a note on the window.** A turn handed to somebody has no words yet, and
+  a window that only reads facts cannot tell that from a turn nobody ever narrated. So the
   ask is written down as a note (`category: "narration_asked"`, `source: "system"`, content
-  `[narration_asked] <bot_id>`), and `gather_context` reports a `"narration"` field read
-  off the newest note — see *The words that have not arrived yet*. The note is not a turn:
-  it is signed `system`, so `SceneFactStore.story?/1` keeps it out of the carry and out of
-  the window's own turns. **One owner** writes it — `PartyNarration.note_the_ask/3` —
-  because both lanes owe the same note for the same pending reading.
+  `[narration_asked] <kind> <bot_id>`), and `gather_context` reports a `"narration"` field
+  read off the newest note — see *The words that have not arrived yet*. The kind is what
+  tells the lanes apart: the chat's round is read off the **chat** notes only, so a turn ask
+  cannot move it. The note is not a turn: it is signed `system`, so
+  `SceneFactStore.story?/1` keeps it out of the carry and out of the window's own turns.
+  **One owner** writes it — `PartyNarration.note_the_ask/4` — because both lanes owe the same
+  note for the same pending reading; and the ask itself calls it
+  (`PartyNarration.publish/4`), so a caller cannot publish an ask the table never sees. An
+  ask the bus did not take leaves no note, because nobody was asked.
 - **A bus that will not take the ask leaves the GM narrating.** If the publish fails, then
   nothing reached her, so the GM narrates — the same rule as an unreadable party.
 
@@ -251,8 +257,8 @@ which instruction she is given. Its rules live in `BotArmyCompanion.PartyNarrato
 
 A window's chat is scene facts, so the window used to be one-way: a line typed into it
 resolved no action, asked nobody, and sat there unanswered. `BotArmyRpg.PartyChat` is the
-rule that closes it — when a line lands in a window whose party names a narrator, she is
-asked to answer it (`kind: "chat"`, the line, and who said it).
+rule that closes it — when a line lands in a window, it is handed to the member whose turn
+it is at that table (`kind: "chat"`, the line, and who said it).
 
 Neither the surface nor the ask's subject changed. The window already reads an ask with no
 words yet from the note, so the same pending line and the same answered line a turn
@@ -262,39 +268,65 @@ Who is asked, and who is not:
 
 | Fact | Asked? | Why |
 |---|---|---|
-| a line somebody said | yes, the party's narrator | the point of the change |
-| the `narrator`'s own words | no | those *are* the answer; asking again is the loop |
+| a line somebody said | yes, the member whose turn it is at this table | the point of the change |
+| the answering member's own words | no | a line is already its author's answer; asking them to answer it is the loop. The round walks past the author |
 | the GM's prose (`source: "gm"`) | no | rpg already narrated it; a second answer to one turn is a second answer |
 | a note the machinery wrote (`source: "system"`) | no | `SceneFactStore.story?/1` is the one thing that says what is story, and bookkeeping is not something anybody said |
 | nothing said (blank or missing `content`) | no | an empty line is not a line |
 
-Only the **narrator** is asked, and nobody else: the role is the one answer to who narrates,
-and a line answered by a member nobody handed it to would be words in another member's
-mouth. A party with no narrator is a party that answers nobody — the line is stored, read
-back, and that is all, exactly as before. A party whose read fails asks nobody, and that is
-`:unreadable` rather than `:no_narrator`, because a store that is down is not a party with
-no narrator.
+### Who answers: the round
+
+A turn is the narrator's, so a turn's ask goes to the party's narrator. A line in the chat
+is not a narration, so it goes **round the table** instead: the member after the one the
+chat asked last answers. No single member is the only voice in the conversation, and no line
+goes unanswered because the narrator happens to be the one who typed it.
+
+The rule is `BotArmyRpg.PartyRotation.pick/3` — a pure round over a list:
+
+- the **cursor** is the newest `"narration_asked"` note of kind `"chat"` in the window
+  (`PartyNarration.last_asked/2`). Reading it off the window's own facts, rather than off a
+  counter or a column, is what makes the round survive a restart and makes it fair:
+  counting asks and taking the remainder mis-fairs as soon as the author is skipped
+  (`B, B, C` instead of `B, C`);
+- a **turn** ask never moves the round, because only the chat notes are read for it;
+- a note written before the kind was recorded cannot say which lane asked, so it is read as
+  a **turn**. At worst a round starts one member early, once;
+- the line's **author is walked past**, and only a table where *everyone* is the author
+  answers `:own_words`;
+- a cursor naming somebody no longer at the table starts the round over rather than picking
+  a stranger;
+- a member who is not a name at all is not somebody the table can ask and is left out.
+
+### Whose table a window's chat is answered by
+
+The table is the **window's** members — a session's `character_ids`, which is who the screen
+put in the scene — ordered by character id so that the same window reads the same order
+every time. A party member who was never put in this window is not at this table, and
+handing them a line would put words in the mouth of somebody the window does not show. It
+also needs no party read at all, which is one less way for the ask to fail.
+
+A window with nobody in it therefore answers nobody (`:no_members`): the line is stored,
+read back, and who to put in the window is the screen's answer, not rpg's. A window or a
+history that cannot be read asks nobody too, and that is `:unreadable` rather than
+`:no_members`, because a store that is down is not a table with nobody at it — and starting
+the round over on an unread history would hand the line to somebody the table already
+answered as.
+
+The **write** a line lands under still names the party identity, which is what makes it
+findable at all: a party is keyed by `{tenant_id, user_id}`, and the identity the window
+writes under is the name an operator uses for herself — which is not a UUID. The routes
+normalize it (`Identity.resolve_user_id/2`) before they key the store, so the reads in
+`PartyRead` normalize too (one owner: `Identity.normalize_user_id/1`): without it a party
+would be looked for under a name no row is stored under, and a table with a narrator would
+answer nobody for no visible reason. `PartyRead.narrator/2` is the one read that asks who
+narrates, so a resolved turn and a line in the chat cannot get two different answers to the
+same question.
 
 The ask cannot fail the line: the line is already stored and the caller is being told so by
 the time it is attempted, so an ask that did not go out is a member nobody asked — the
-window then says her words are not there yet, which is true — and never a lost line. Every
-outcome is reported by its kind (`{:asked, member}`, `:no_narrator`, `:own_words`,
+window then says their words are not there yet, which is true — and never a lost line. Every
+outcome is reported by its kind (`{:asked, member}`, `:no_members`, `:own_words`,
 `:not_a_turn`, `:no_window`, `:unreadable`, `{:error, reason}`) and logged.
-
-### Whose party a window's chat is answered by
-
-A party is keyed by `{tenant_id, user_id}`, and the identity the window writes under is the
-name an operator uses for herself — which is not a UUID. The routes normalize it
-(`Identity.resolve_user_id/2`) before they key the store, so the read normalizes too
-(`PartyRead.read/2`, one owner: `Identity.normalize_user_id/1`): without it the chat ask
-would look for a party under a name no row is stored under and find none, and a table with
-a narrator would answer nobody for no visible reason.
-
-`PartyRead.narrator/2` is the one read that asks who narrates, so a resolved turn and a
-line in the chat cannot get two different answers to the same question. The *reads* of a
-window's context still name **no** user — the window's session carries `user_id: nil` and
-`Sessions.active_for/2` filters on exactly that — while the *write* names the party
-identity, which is what makes the ask findable at all.
 
 ## The words that have not arrived yet
 

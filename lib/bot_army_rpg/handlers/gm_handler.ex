@@ -345,17 +345,18 @@ defmodule BotArmyRpg.Handlers.GMHandler do
   # asked once and never awaited — rpg cannot know whether she answers, so it reports the
   # turn as having no narration yet rather than inventing one.
   #
-  # The ask is also written down, as a note on the window (`note_the_ask/3`): the window
+  # The ask is also written down, as a note on the window (`PartyNarration`): the window
   # reads its turns off the facts, so a turn that was handed to her and has no words yet
   # looks exactly like a turn nobody ever narrated. The note is what the window's pending
-  # reading is built from (`SessionContextHandler`).
+  # reading is built from (`SessionContextHandler`), and the ask writes it itself.
   #
   # A bus that will not take the ask is not a narrator who stayed silent: nothing reached
-  # her, so the GM narrates, exactly as when the party cannot be read at all.
+  # her, so the GM narrates, exactly as when the party cannot be read at all. The note is the
+  # ask's own business (`PartyNarration.publish/4` writes it), so a caller cannot publish an
+  # ask a table never sees.
   defp ask_narrator(member, session, tenant_id, theme, turn) do
     case PartyNarration.ask(member, session, tenant_id, turn) do
       :ok ->
-        PartyNarration.note_the_ask(member, session["id"], tenant_id)
         nil
 
       {:error, reason} ->
@@ -367,11 +368,9 @@ defmodule BotArmyRpg.Handlers.GMHandler do
     end
   end
 
-  # The machinery speaking is not a person in the scene: the note is written by
-  # `PartyNarration.note_the_ask/3`, which signs it `"system"` — what keeps it out of the
-  # carry (`SceneFactStore.story?/1`) and out of the window's turns, while
-  # `PartyNarration.asked?/1` still finds it in the facts. One owner for it, because a chat
-  # line owes the same note for the same pending reading.
+  # The actor's own bot, told it is their turn (autoplay). A different event from the ask:
+  # this one tells a character's bot *to act*, and `PartyNarration`'s tells the table's
+  # narrator *to narrate what the action did*. Neither writes a fact — the words are theirs.
   defp publish_turn_started(session, actor, tenant_id) do
     if actor do
       BotArmyRpg.NATS.Publisher.publish(
