@@ -6,7 +6,7 @@ defmodule BotArmyRpg.Handlers.GMHandler do
   require Logger
 
   alias BotArmyRpg.GM.{TurnManager, ActionResolver, BotPlayer, Narrator}
-  alias BotArmyRpg.{PartyNarration, PartyRead, PartyStore}
+  alias BotArmyRpg.{PartyNarration, PartyRead}
 
   defp session_store do
     Application.get_env(:bot_army_rpg, :session_store, BotArmyRpg.SessionStore)
@@ -296,10 +296,11 @@ defmodule BotArmyRpg.Handlers.GMHandler do
   end
 
   # The party's narrator, or nil. `PartyStore.narrator/1` is the only thing that decides
-  # who narrates; this must not spell a second answer.
+  # who narrates and `PartyRead.narrator/2` the only read that asks it, so a chat line
+  # answered in the same window cannot be answered by a second spelling of this question.
   defp narrator_of(session, tenant_id) do
-    case PartyRead.read(tenant_id, session["user_id"]) do
-      {:ok, party} -> PartyStore.narrator(party)
+    case PartyRead.narrator(tenant_id, session["user_id"]) do
+      {:ok, member} -> member
       {:error, reason} -> unread_party(reason)
     end
   rescue
@@ -354,7 +355,7 @@ defmodule BotArmyRpg.Handlers.GMHandler do
   defp ask_narrator(member, session, tenant_id, theme, turn) do
     case PartyNarration.ask(member, session, tenant_id, turn) do
       :ok ->
-        note_the_ask(member, session, tenant_id)
+        PartyNarration.note_the_ask(member, session["id"], tenant_id)
         nil
 
       {:error, reason} ->
@@ -366,27 +367,11 @@ defmodule BotArmyRpg.Handlers.GMHandler do
     end
   end
 
-  # The machinery speaking is not a person in the scene, so the note is signed `"system"`:
-  # that is what keeps it out of the carry (`SceneFactStore.story?/1`) and out of the
-  # window's turns, while `PartyNarration.asked?/1` still finds it in the facts. A note that
-  # could not be written is reported by its kind and nothing else — the turn is not lost
-  # because its bookkeeping failed.
-  defp note_the_ask(member, session, tenant_id) do
-    case scene_fact_store().append(%{
-           "session_id" => session["id"],
-           "tenant_id" => tenant_id,
-           "content" => PartyNarration.note_content(member),
-           "category" => PartyNarration.asked_category(),
-           "source" => "system"
-         }) do
-      {:ok, _note} ->
-        :ok
-
-      {:error, reason} ->
-        Logger.warning("[GM] The ask could not be noted: #{inspect(PartyRead.shape(reason))}")
-    end
-  end
-
+  # The machinery speaking is not a person in the scene: the note is written by
+  # `PartyNarration.note_the_ask/3`, which signs it `"system"` — what keeps it out of the
+  # carry (`SceneFactStore.story?/1`) and out of the window's turns, while
+  # `PartyNarration.asked?/1` still finds it in the facts. One owner for it, because a chat
+  # line owes the same note for the same pending reading.
   defp publish_turn_started(session, actor, tenant_id) do
     if actor do
       BotArmyRpg.NATS.Publisher.publish(

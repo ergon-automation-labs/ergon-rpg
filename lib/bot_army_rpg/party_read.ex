@@ -13,7 +13,17 @@ defmodule BotArmyRpg.PartyRead do
   Two handlers ask this now — the window's context and a turn's narration — so the
   policy lives here rather than in either of them: one idea of what a party is and one
   mapping of its refusals (N+56).
+
+  ## The key
+
+  A party is keyed by the UUID a user id normalizes to, and the routes normalize before
+  they key it (`Identity.resolve_user_id/2`) — so this read normalizes too, or a caller
+  holding the name an operator uses for herself ("abby", the identity the dashboard
+  recruits a party under) would ask the store for a row it cannot cast and be told the
+  party is invalid rather than read. One rule, one owner: `Identity.normalize_user_id/1`.
   """
+
+  alias BotArmyRpg.{Identity, PartyStore}
 
   @doc """
   The party for this identity, or the reason it could not be read.
@@ -25,7 +35,7 @@ defmodule BotArmyRpg.PartyRead do
   def read(_tenant_id, nil), do: {:ok, %{}}
 
   def read(tenant_id, user_id) when is_binary(tenant_id) and is_binary(user_id) do
-    case store().get_party(tenant_id, user_id) do
+    case store().get_party(tenant_id, Identity.normalize_user_id(user_id)) do
       {:ok, party} -> {:ok, party}
       {:error, :not_found} -> {:ok, %{}}
       {:error, reason} -> {:error, reason}
@@ -33,6 +43,24 @@ defmodule BotArmyRpg.PartyRead do
   end
 
   def read(_tenant_id, _user_id), do: {:ok, %{}}
+
+  @doc """
+  The member of this identity's party who narrates, or `nil`.
+
+  `{:ok, member}` is who narrates, `{:ok, nil}` is a party that names no narrator (or no
+  party at all), and `{:error, reason}` is the read's refusal, carried as it came. Who
+  narrates is `PartyStore.narrator/1`'s answer and never this module's: this only asks the
+  party for it.
+
+  Two callers owe this question the same answer — a resolved turn (`GMHandler`) and a line
+  in the window's chat (`PartyChat`) — so it is one function rather than two spellings of
+  it.
+  """
+  def narrator(tenant_id, user_id) do
+    with {:ok, party} <- read(tenant_id, user_id) do
+      {:ok, PartyStore.narrator(party)}
+    end
+  end
 
   @doc """
   A refusal reduced to its kind.

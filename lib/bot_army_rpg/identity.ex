@@ -77,9 +77,18 @@ defmodule BotArmyRpg.Identity do
     Application.get_env(:bot_army_rpg, :identity_store, BotArmyRpg.IdentityBindingStore)
   end
 
-  defp normalize_user_id(nil), do: nil
+  @doc """
+  The key an identity string is stored under.
 
-  defp normalize_user_id(user_id) when is_binary(user_id) do
+  A user id is a UUID column's value, and an operator's name for herself ("abby") is not
+  one: it is hashed into a deterministic UUID here, so every caller handed the same name
+  keys the same row. `nil` stays `nil` — no user is not a user to invent one for — and
+  anything that is not a binary is handed back as it came, for the guard at the store to
+  refuse.
+  """
+  def normalize_user_id(nil), do: nil
+
+  def normalize_user_id(user_id) when is_binary(user_id) do
     case Ecto.UUID.cast(user_id) do
       {:ok, uuid} ->
         uuid
@@ -91,5 +100,5 @@ defmodule BotArmyRpg.Identity do
     end
   end
 
-  defp normalize_user_id(user_id), do: user_id
+  def normalize_user_id(user_id), do: user_id
 end

@@ -2,6 +2,8 @@ defmodule BotArmyRpg.Handlers.SceneFactHandler do
   @moduledoc "Handles NATS messages for adding, listing, and clearing scene facts."
   require Logger
 
+  alias BotArmyRpg.{PartyChat, PartyRead}
+
   defp scene_fact_store do
     Application.get_env(:bot_army_rpg, :scene_fact_store, BotArmyRpg.SceneFactStore)
   end
@@ -34,11 +36,39 @@ defmodule BotArmyRpg.Handlers.SceneFactHandler do
           user_id: user_id
         )
 
+        maybe_ask_chat(tenant_id, user_id, fact)
+
         {:ok, fact}
 
       {:error, reason} ->
         Logger.error("[SceneFactHandler] Add failed: #{inspect(reason)}")
         {:error, reason}
+    end
+  end
+
+  # The window is a conversation, and a conversation is not a monologue: a line that landed
+  # in a window whose party names a narrator is handed to her, the same way a resolved turn
+  # hands her one. `PartyChat` owns the rule about lines, `PartyNarration` the ask itself,
+  # and this only reports the outcome.
+  #
+  # Best effort, and logged by its kind: the line is already stored and the caller is being
+  # told so, so an ask that did not go out is a member nobody asked — the window then says
+  # her words are not there yet, which is true — and never a lost line.
+  defp maybe_ask_chat(tenant_id, user_id, fact) do
+    session_id = fact["session_id"] || fact["session"]
+
+    case PartyChat.maybe_ask(tenant_id, user_id, session_id, fact) do
+      {:asked, member} ->
+        Logger.info("[SceneFactHandler] Chat handed to the narrator #{member["bot_id"]}")
+
+      {:error, reason} ->
+        Logger.warning(
+          "[SceneFactHandler] Chat ask not published: " <>
+            "#{inspect(PartyRead.shape(reason))}; nobody was asked"
+        )
+
+      outcome when outcome in [:no_narrator, :own_words, :not_a_turn, :no_window, :unreadable] ->
+        :ok
     end
   end
 

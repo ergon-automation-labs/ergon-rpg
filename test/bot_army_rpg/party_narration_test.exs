@@ -21,6 +21,19 @@ defmodule BotArmyRpg.PartyNarrationTest do
     end
   end
 
+  defmodule StubSceneFactStore do
+    @moduledoc false
+    def append(payload) do
+      send(self(), {:appended, payload})
+      {:ok, Map.put(payload, "id", "note-1")}
+    end
+  end
+
+  defmodule FailingSceneFactStore do
+    @moduledoc false
+    def append(_payload), do: {:error, :database_unavailable}
+  end
+
   @member %{"character_id" => "c-narrator", "bot_id" => "companion_bot", "role" => "narrator"}
 
   @session %{
@@ -47,6 +60,7 @@ defmodule BotArmyRpg.PartyNarrationTest do
     test "names her, and carries the actor, the action and the resolution" do
       payload = PartyNarration.payload(@member, @session, @turn)
 
+      assert payload["kind"] == "turn"
       assert payload["bot_id"] == "companion_bot"
       assert payload["character_id"] == "c-narrator"
       assert payload["session_id"] == @session["id"]
@@ -107,6 +121,93 @@ defmodule BotArmyRpg.PartyNarrationTest do
       assert subject == "rpg.narration.your_turn"
       assert opts[:tenant_id] == "00000000-0000-0000-0000-000000000001"
       assert payload == PartyNarration.payload(@member, @session, @turn)
+    end
+  end
+
+  describe "chat_payload/3 and ask_chat/4" do
+    @line %{
+      "content" => "is anybody in there",
+      "source" => "operator",
+      "session_id" => @session["id"],
+      "category" => "dialogue"
+    }
+
+    test "carries the line and who said it, and no turn's material" do
+      payload = PartyNarration.chat_payload(@member, @session["id"], @line)
+
+      assert payload == %{
+               "kind" => "chat",
+               "session_id" => @session["id"],
+               "character_id" => "c-narrator",
+               "bot_id" => "companion_bot",
+               "content" => "is anybody in there",
+               "speaker" => "operator"
+             }
+
+      # A chat ask is not a turn: there is no action to narrate, and the far end decides
+      # what to write from the kind rather than from which fields happen to be present.
+      refute Map.has_key?(payload, "actor")
+      refute Map.has_key?(payload, "action")
+      refute Map.has_key?(payload, "resolution")
+    end
+
+    test "is published on the same subject a turn's ask uses" do
+      assert :ok =
+               PartyNarration.ask_chat(
+                 @member,
+                 @session["id"],
+                 "00000000-0000-0000-0000-000000000001",
+                 @line
+               )
+
+      assert_received {:published, subject, payload, opts}
+
+      assert subject == "rpg.narration.your_turn"
+      assert opts[:tenant_id] == "00000000-0000-0000-0000-000000000001"
+      assert payload == PartyNarration.chat_payload(@member, @session["id"], @line)
+    end
+  end
+
+  describe "note_the_ask/3" do
+    setup do
+      Application.put_env(:bot_army_rpg, :scene_fact_store, StubSceneFactStore)
+
+      on_exit(fn -> Application.delete_env(:bot_army_rpg, :scene_fact_store) end)
+
+      :ok
+    end
+
+    test "writes the note the pending reading is built from, signed by the machinery" do
+      assert :ok =
+               PartyNarration.note_the_ask(
+                 @member,
+                 @session["id"],
+                 "00000000-0000-0000-0000-000000000001"
+               )
+
+      assert_received {:appended, note}
+
+      assert note["content"] == "[narration_asked] companion_bot"
+      assert note["category"] == PartyNarration.asked_category()
+      assert note["source"] == "system"
+      assert note["session_id"] == @session["id"]
+      assert note["tenant_id"] == "00000000-0000-0000-0000-000000000001"
+
+      # The note this writes is the note the window's reader recognises: round-tripped
+      # here rather than assumed, because a note no reader can find is not a note.
+      assert PartyNarration.asked?(note)
+      assert PartyNarration.asked_of(note) == "companion_bot"
+    end
+
+    test "a note that could not be written is the bookkeeping failing, not the ask" do
+      Application.put_env(:bot_army_rpg, :scene_fact_store, FailingSceneFactStore)
+
+      assert :ok =
+               PartyNarration.note_the_ask(
+                 @member,
+                 @session["id"],
+                 "00000000-0000-0000-0000-000000000001"
+               )
     end
   end
 end
