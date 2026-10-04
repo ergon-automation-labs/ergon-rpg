@@ -6,7 +6,10 @@ defmodule BotArmyRpg.Test.FakePartyRepo do
   table, and it speaks five plain functions, so a stand-in answers those five and
   nothing else. This
   one is not a fake Ecto: it runs the real changeset (validation is not a database
-  feature) and it emulates the one rule a database owns, the unique membership.
+  feature), it emulates the one rule a database owns, the unique membership, and it
+  raises `Ecto.Query.CastError` on a value that is not an id, the way the real repo's
+  `where` clauses do — so the store's answer to a *shape* failure is a thing a test can
+  drive, and not only the answer to a database that is down.
 
   The two switches exist because a failed read and a failed write are different events,
   and the store has to answer them differently: a read that fails may never be reported
@@ -44,6 +47,7 @@ defmodule BotArmyRpg.Test.FakePartyRepo do
 
   def members(tenant_id, user_id) do
     down_if_broken(@broken_reads, "read the party")
+    cast_id!(:user_id, user_id)
 
     rows()
     |> Enum.filter(&(&1.tenant_id == tenant_id and &1.user_id == user_id))
@@ -85,6 +89,7 @@ defmodule BotArmyRpg.Test.FakePartyRepo do
 
   def delete(tenant_id, user_id, character_id) do
     down_if_broken(@broken_writes, "remove a member")
+    cast_id!(:character_id, character_id)
 
     doomed =
       rows()
@@ -102,6 +107,7 @@ defmodule BotArmyRpg.Test.FakePartyRepo do
   # every narrator is demoted and the named member promoted. `nil` names nobody.
   def set_narrator(tenant_id, user_id, character_id) do
     down_if_broken(@broken_writes, "name the party's narrator")
+    cast_id!(:character_id, character_id)
 
     if is_binary(character_id) and not member?(tenant_id, user_id, character_id) do
       {:error, :not_a_member}
@@ -144,6 +150,26 @@ defmodule BotArmyRpg.Test.FakePartyRepo do
         row.character_id == character_id
     end)
   end
+
+  # The real repo compares the caller's values against `uuid` columns, so a value that is
+  # not an id raises `Ecto.Query.CastError` before any query runs. The stand-in does the
+  # same, which is what makes the store's answer to that failure a thing a test can drive:
+  # a value the query could not cast is a shape failure, and it may not be reported as the
+  # database being unavailable.
+  defp cast_id!(field, value) when is_binary(value) do
+    case Ecto.UUID.cast(value) do
+      {:ok, _} ->
+        value
+
+      :error ->
+        raise Ecto.Query.CastError,
+          value: value,
+          type: Ecto.UUID,
+          message: "cannot cast #{value} to #{field}"
+    end
+  end
+
+  defp cast_id!(_field, value), do: value
 
   defp rows, do: :ets.tab2list(@table) |> Enum.map(&elem(&1, 1))
   defp oldest_first(rows), do: Enum.sort_by(rows, fn row -> {row.joined_at, row.id} end)

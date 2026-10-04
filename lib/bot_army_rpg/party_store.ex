@@ -224,7 +224,7 @@ defmodule BotArmyRpg.PartyStore do
   end
 
   defp members(party_repo, tenant_id, user_id) do
-    safeguard("read the party", fn -> {:ok, party_repo.members(tenant_id, user_id)} end)
+    safeguard("read the party", :user_id, fn -> {:ok, party_repo.members(tenant_id, user_id)} end)
   end
 
   # Adding a companion who is already in the party is neither an error nor a second
@@ -293,19 +293,19 @@ defmodule BotArmyRpg.PartyStore do
   end
 
   defp set_role(party_repo, tenant_id, user_id, character_id) do
-    safeguard("name the party's narrator", fn ->
+    safeguard("name the party's narrator", :character_id, fn ->
       party_repo.set_narrator(tenant_id, user_id, character_id)
     end)
   end
 
   defp all_for_tenant(party_repo, tenant_id) do
-    safeguard("list the tenant's parties", fn ->
+    safeguard("list the tenant's parties", :tenant_id, fn ->
       {:ok, party_repo.all_for_tenant(tenant_id)}
     end)
   end
 
   defp insert(party_repo, tenant_id, user_id, member_data) do
-    safeguard("write a member", fn ->
+    safeguard("write a member", :user_id, fn ->
       party_repo.insert(member_attrs(tenant_id, user_id, member_data)) |> shaped()
     end)
   end
@@ -325,7 +325,7 @@ defmodule BotArmyRpg.PartyStore do
   end
 
   defp delete(party_repo, tenant_id, user_id, character_id) do
-    safeguard("remove a member", fn ->
+    safeguard("remove a member", :character_id, fn ->
       party_repo.delete(tenant_id, user_id, character_id)
     end)
   end
@@ -360,7 +360,7 @@ defmodule BotArmyRpg.PartyStore do
   end
 
   defp provision(bot_id, tenant_id) do
-    safeguard("provision #{bot_id}", fn ->
+    safeguard("provision #{bot_id}", :id, fn ->
       BotArmyRpg.CharacterProvisioning.ensure_bot_character(bot_id, tenant_id)
     end)
   end
@@ -398,14 +398,21 @@ defmodule BotArmyRpg.PartyStore do
   # Every repo call goes through here. A failure is the store's answer, not the store's
   # death: a raise out of a `handle_call` kills the process and the caller waits for a
   # reply that will never come.
-  defp safeguard(what, fun) do
+  #
+  # `which` names the column the call keyed on, and it is used for one thing: a value the
+  # query could not cast is a **shape** failure, and it is answered as one. Reporting it as
+  # `:database_unavailable` was a lie with a witness — a caller who sent `"user_id":
+  # "abby"` was told the database was down, and the database was fine. A database that is
+  # really unreachable still answers `:database_unavailable`.
+  defp safeguard(what, which, fun) do
     fun.()
   rescue
-    e ->
-      Logger.error(
-        "[PartyStore] Could not #{what}: #{inspect(e.__struct__)} - #{Exception.message(e)}"
-      )
+    e in [Ecto.Query.CastError] ->
+      log_failure(what, e)
+      {:error, invalid_reason(which)}
 
+    e ->
+      log_failure(what, e)
       @unavailable
   catch
     :exit, reason ->
@@ -414,6 +421,17 @@ defmodule BotArmyRpg.PartyStore do
       Logger.error("[PartyStore] Could not #{what}: exited (#{inspect(shape(reason))})")
       @unavailable
   end
+
+  defp log_failure(what, e) do
+    Logger.error(
+      "[PartyStore] Could not #{what}: #{inspect(e.__struct__)} - #{Exception.message(e)}"
+    )
+  end
+
+  defp invalid_reason(:user_id), do: :invalid_user_id
+  defp invalid_reason(:character_id), do: :invalid_character_id
+  defp invalid_reason(:tenant_id), do: :invalid_tenant_id
+  defp invalid_reason(_id), do: :invalid_id
 
   defp shape(reason) when is_tuple(reason), do: elem(reason, 0)
   defp shape(reason), do: reason

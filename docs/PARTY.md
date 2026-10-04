@@ -61,6 +61,21 @@ one), which is what makes the rules testable without a database — and what mak
 - **`joined_at` is stamped by the store.** A caller cannot backdate a join.
 - **A refusal from `remove` is `:not_found`** — a removal that changed nothing is not a
   removal.
+
+### The identity, and a value that is not an id
+
+- **`user_id` is resolved, never taken raw.** Every party route runs the request through
+  `BotArmyRpg.Identity.resolve_user_id/2`, the same call `rpg.session.*` and
+  `rpg.character.list` make, so `"user_id": "abby"` is the same stable id here as it is in
+  the window this party belongs to. A name the identity store cannot normalize is
+  `:invalid_user_id`.
+- **A value the query could not cast is a shape refusal, not an outage.** The query
+  compares against `uuid` columns, so a value that is not an id used to raise
+  `Ecto.Query.CastError` inside the store and came back to the caller as
+  `:database_unavailable` — a lie with a witness, because the database was fine and the
+  caller had no way to tell. It is now answered by the column the call keyed on:
+  `:invalid_user_id`, `:invalid_character_id`, or `:invalid_tenant_id`. A database that is
+  really unreachable still answers `:database_unavailable`.
 - **A party has one narrator or none**, and the role is held by a *member* — never by a
   caller, never by a turn. Naming one demotes whoever held it; `character_id: null`
   clears it; a character the party does not have is `:not_a_member` and moves no row. The
@@ -74,8 +89,7 @@ one), which is what makes the rules testable without a database — and what mak
 | `rpg.party.get` | yes | needs `user_id` (and `tenant_id`) |
 | `rpg.party.add` | yes | recruits a bot companion (provisions her character if needed) |
 | `rpg.party.remove` | yes | by `character_id` |
-| `rpg.party.set_narrator` | yes | by `character_id`; an explicit `null` clears the role, an absent key is `:missing_character_id` |
-| `rpg.party.auto_populate` | **no, on purpose** | its `known_bot_ids/0` list (`gtd`, `llm`, …) does not match the fleet's registered ids (`gtd_bot`, `llm_bot`), so a registered auto_populate would recruit a parallel ghost of every companion. The fix is to take the ids from the registry; until then nothing should be sent here |
+| `rpg.party.set_narrator` | yes | by `character_id`; an explicit `null` clears the role, an absent key is `:missing_character_id` || `rpg.party.auto_populate` | **no, on purpose** | its `known_bot_ids/0` list (`gtd`, `llm`, …) does not match the fleet's registered ids (`gtd_bot`, `llm_bot`), so a registered auto_populate would recruit a parallel ghost of every companion. The fix is to take the ids from the registry; until then nothing should be sent here |
 
 The "no party yet" message used to name `rpg.party.auto_populate` — a route nobody
 answers. It names `rpg.party.add` now, and a test pins that name against
@@ -86,7 +100,7 @@ again.
 
 | File | Tag | What it proves |
 |------|-----|----------------|
-| `test/bot_army_rpg/party_store_test.exs` | `:core` | every rule above, on every `mix test`, through `BotArmyRpg.Test.FakePartyRepo` (ETS + the real changeset + the unique rule) |
+| `test/bot_army_rpg/party_store_test.exs` | `:core` | every rule above, on every `mix test`, through `BotArmyRpg.Test.FakePartyRepo` (ETS + the real changeset + the unique rule + the uuid cast, so a shape refusal is provable without a database) |
 | `test/bot_army_rpg/schemas/party_member_test.exs` | `:schemas` | the membership's own shape: uuids, required fields, the role vocabulary, the declared constraint |
 | `test/bot_army_rpg/party_store_db_test.exs` | `:stores` + `:integration` | real SQL, the real unique index, durability across a restart, the demote/promote transaction read off the rows, and a dropped table being a refusal |
 | `test/bot_army_rpg/handlers/party_handler_test.exs` | `:handlers` | the wire: the blank party's message names a registered route, and `null` vs an absent key are different requests |

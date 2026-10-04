@@ -234,4 +234,37 @@ defmodule BotArmyRpg.PartyStoreTest do
       assert PartyStore.narrator(%{}) == nil
     end
   end
+
+  describe "a value the query could not cast" do
+    # `"user_id": "abby"` is what the surface screens actually send, and the query behind
+    # this store compares against a `uuid` column. The cast failed, and the failure came back
+    # to the caller named as `:database_unavailable` — a lie with a witness, because the
+    # database was fine and the caller had no way to tell. A shape failure is now answered as
+    # a shape failure, by the name of the field it was keyed on.
+    test "is a shape refusal, not the database being unavailable" do
+      assert {:error, :invalid_user_id} = PartyStore.get_party(@tenant, "abby")
+    end
+
+    test "and a malformed character is refused by the column's own name" do
+      {:ok, _} = PartyStore.add_member(@tenant, @user, member("gtd_bot"))
+
+      assert {:error, :invalid_character_id} =
+               PartyStore.remove_member(@tenant, @user, "not-an-id")
+
+      assert {:error, :invalid_character_id} =
+               PartyStore.set_narrator(@tenant, @user, "not-an-id")
+
+      # And none of those refusals moved the party: it is still there, one companion, no
+      # narrator. A refusal may not leave the party changed.
+      assert {:ok, party} = PartyStore.get_party(@tenant, @user)
+      assert [%{"bot_id" => "gtd_bot"}] = party["members"]
+      assert PartyStore.narrator(party) == nil
+    end
+
+    test "the database really being unreachable still says exactly that" do
+      FakePartyRepo.break_reads()
+
+      assert {:error, :database_unavailable} = PartyStore.get_party(@tenant, @user)
+    end
+  end
 end

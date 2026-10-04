@@ -25,6 +25,13 @@ defmodule BotArmyRpg.Handlers.PartyHandler do
   the two are different questions — *which store* and *is there one* — and a handler
   that hardcodes the second cannot be tested with the first (the party routes answered
   from the real store even when a test had pointed the app at a stand-in).
+
+  The identity a request keys its party on is resolved the one way every other route
+  resolves it — `BotArmyRpg.Identity.resolve_user_id/2`, the same call `rpg.session.*`
+  and `rpg.character.list` make — so `"user_id": "abby"` is the same stable id here as
+  it is in the window this party belongs to. Reading the raw field instead meant the
+  literal the surface screens send reached a `uuid` column as the string `"abby"`, and
+  the cast failure came back to the caller named as a database outage.
   """
 
   require Logger
@@ -40,8 +47,7 @@ defmodule BotArmyRpg.Handlers.PartyHandler do
   end
 
   def handle_get(message) do
-    tenant_id = Map.get(message, "tenant_id") || BotArmyLibraryRuntime.Tenant.default_tenant_id()
-    user_id = Map.get(message, "user_id")
+    {tenant_id, user_id} = identity_of(message)
 
     with :ok <- require_user(user_id) do
       case party_store().get_party(tenant_id, user_id) do
@@ -63,9 +69,8 @@ defmodule BotArmyRpg.Handlers.PartyHandler do
   end
 
   def handle_add(message) do
-    tenant_id = Map.get(message, "tenant_id") || BotArmyLibraryRuntime.Tenant.default_tenant_id()
-    user_id = Map.get(message, "user_id")
-    bot_id = Map.get(message, "bot_id")
+    {tenant_id, user_id} = identity_of(message)
+    bot_id = Map.get(params_of(message), "bot_id")
 
     with :ok <- require_user(user_id),
          :ok <- require_bot(bot_id),
@@ -86,8 +91,31 @@ defmodule BotArmyRpg.Handlers.PartyHandler do
     end
   end
 
+  # The identity, resolved the one way every other route resolves it. `rpg.session.*`
+  # and `rpg.character.list` already run a caller's `user_id` through
+  # `Identity.resolve_user_id/2`; the party routes read the raw field instead, so the
+  # literal `"user_id": "abby"` other screens send reached a `uuid` column as the string
+  # `"abby"`, and Postgres's cast failure came back to the caller named as a database
+  # outage. Resolving here makes the party as identity-aware as the window it belongs to,
+  # and makes `"abby"` the same person on both routes.
+  defp identity_of(message) do
+    params = params_of(message)
+
+    tenant_id =
+      Map.get(params, "tenant_id") || Map.get(message, "tenant_id") ||
+        BotArmyLibraryRuntime.Tenant.default_tenant_id()
+
+    {tenant_id, BotArmyRpg.Identity.resolve_user_id(message, tenant_id)}
+  end
+
+  defp params_of(message) when is_map(message), do: Map.get(message, "payload") || message
+  defp params_of(_message), do: %{}
+
   defp require_user(nil), do: {:error, :missing_user_id}
-  defp require_user(_user_id), do: :ok
+  defp require_user(user_id) when is_binary(user_id), do: :ok
+  # A caller who named an identity the store cannot key a party by is refused by name,
+  # rather than handed to a store whose query would raise on the cast.
+  defp require_user(_user_id), do: {:error, :invalid_user_id}
 
   defp require_bot(nil), do: {:error, :missing_bot_id}
   defp require_bot(_bot_id), do: :ok
@@ -100,9 +128,8 @@ defmodule BotArmyRpg.Handlers.PartyHandler do
   end
 
   def handle_remove(message) do
-    tenant_id = Map.get(message, "tenant_id") || BotArmyLibraryRuntime.Tenant.default_tenant_id()
-    user_id = Map.get(message, "user_id")
-    character_id = Map.get(message, "character_id")
+    {tenant_id, user_id} = identity_of(message)
+    character_id = Map.get(params_of(message), "character_id")
 
     cond do
       is_nil(user_id) -> {:error, :missing_user_id}
@@ -119,13 +146,13 @@ defmodule BotArmyRpg.Handlers.PartyHandler do
   # is cleared. A member the party does not have is `:not_a_member` (the store refuses it),
   # never a quiet promotion of nobody.
   def handle_set_narrator(message) do
-    tenant_id = Map.get(message, "tenant_id") || BotArmyLibraryRuntime.Tenant.default_tenant_id()
-    user_id = Map.get(message, "user_id")
+    {tenant_id, user_id} = identity_of(message)
+    params = params_of(message)
 
     cond do
       is_nil(user_id) -> {:error, :missing_user_id}
-      not Map.has_key?(message, "character_id") -> {:error, :missing_character_id}
-      true -> name_narrator(tenant_id, user_id, Map.get(message, "character_id"))
+      not Map.has_key?(params, "character_id") -> {:error, :missing_character_id}
+      true -> name_narrator(tenant_id, user_id, Map.get(params, "character_id"))
     end
   end
 
@@ -137,8 +164,7 @@ defmodule BotArmyRpg.Handlers.PartyHandler do
   end
 
   def handle_auto_populate(message) do
-    tenant_id = Map.get(message, "tenant_id") || BotArmyLibraryRuntime.Tenant.default_tenant_id()
-    user_id = Map.get(message, "user_id")
+    {tenant_id, user_id} = identity_of(message)
 
     if user_id do
       case party_store().auto_populate(tenant_id, user_id) do

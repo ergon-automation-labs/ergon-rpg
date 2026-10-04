@@ -118,6 +118,56 @@ defmodule BotArmyRpg.Handlers.PartyHandlerTest do
     end
   end
 
+  describe "the identity it keys the party on" do
+    # The party routes read the raw `user_id` while every other route — the window it
+    # belongs to, the character list — resolves it through `Identity.resolve_user_id/2`.
+    # So the literal `"user_id": "abby"` the surface sends reached a `uuid` column as the
+    # string `"abby"`, and the cast failure was reported as the database being down. One
+    # identity rule, not two.
+    test "a name that is not a UUID is the same stable id the window routes derive" do
+      resolved = BotArmyRpg.Identity.resolve_user_id(%{"user_id" => "abby"}, @tenant)
+      assert {:ok, _} = Ecto.UUID.cast(resolved)
+      refute resolved == "abby"
+
+      Mox.expect(BotArmyRpg.PartyStoreMock, :get_party, fn @tenant, user_id ->
+        assert user_id == resolved
+        {:error, :not_found}
+      end)
+
+      assert {:ok, %{"message" => message}} =
+               PartyHandler.handle_get(%{"tenant_id" => @tenant, "user_id" => "abby"})
+
+      assert message =~ "No party yet"
+    end
+
+    test "a UUID is passed through as itself" do
+      Mox.expect(BotArmyRpg.PartyStoreMock, :get_party, fn @tenant, @user ->
+        {:error, :not_found}
+      end)
+
+      assert {:ok, _party} =
+               PartyHandler.handle_get(%{"tenant_id" => @tenant, "user_id" => @user})
+    end
+
+    test "an identity the store cannot key a party on is refused by name" do
+      # Not `:database_unavailable`: nothing was ever asked of the database.
+      assert {:error, :invalid_user_id} =
+               PartyHandler.handle_get(%{"tenant_id" => @tenant, "user_id" => 42})
+    end
+
+    test "the identity is read out of a payload envelope too" do
+      Mox.expect(BotArmyRpg.PartyStoreMock, :get_party, fn @tenant, user_id ->
+        assert user_id == BotArmyRpg.Identity.resolve_user_id(%{"user_id" => "abby"}, @tenant)
+        {:error, :not_found}
+      end)
+
+      assert {:ok, _party} =
+               PartyHandler.handle_get(%{
+                 "payload" => %{"tenant_id" => @tenant, "user_id" => "abby"}
+               })
+    end
+  end
+
   describe "handle_set_narrator/1" do
     test "names the narrator through the store, and answers with the party that write produced" do
       Mox.expect(BotArmyRpg.PartyStoreMock, :set_narrator, fn @tenant, @user, "char-gtd_bot" ->
