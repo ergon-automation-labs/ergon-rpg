@@ -68,8 +68,11 @@ init:
 _compile-impl:
 	@LOG_FILE="/tmp/compile-rpg-$$(date +%s).log"; \
 	echo "Compiling rpg and logging to $$LOG_FILE..."; \
+	set -o pipefail; \
 	$(MIX) compile 2>&1 | tee "$$LOG_FILE"; \
-	echo "✓ Compilation log: $$LOG_FILE"
+	rc=$$?; \
+	echo "✓ Compilation log: $$LOG_FILE"; \
+	exit $$rc
 
 deps:
 	$(MIX) deps.get
