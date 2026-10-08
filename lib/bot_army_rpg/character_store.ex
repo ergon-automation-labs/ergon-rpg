@@ -385,8 +385,8 @@ defmodule BotArmyRpg.CharacterStore do
       "stats" => char.stats,
       "inventory" => char.inventory,
       "notes" => char.notes,
-      "created_at" => char.inserted_at |> NaiveDateTime.to_iso8601(),
-      "updated_at" => char.updated_at |> NaiveDateTime.to_iso8601()
+      "created_at" => char.inserted_at |> BotArmyLibraryRuntime.Timestamp.utc_iso8601(),
+      "updated_at" => char.updated_at |> BotArmyLibraryRuntime.Timestamp.utc_iso8601()
     }
   end
 

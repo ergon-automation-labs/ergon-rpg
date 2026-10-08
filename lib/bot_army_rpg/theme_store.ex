@@ -170,9 +170,9 @@ defmodule BotArmyRpg.ThemeStore do
       "rules" => theme.rules,
       "is_current" => theme.is_current,
       "changed_by" => theme.changed_by,
-      "changed_at" => theme.updated_at |> NaiveDateTime.to_iso8601(),
-      "created_at" => theme.inserted_at |> NaiveDateTime.to_iso8601(),
-      "updated_at" => theme.updated_at |> NaiveDateTime.to_iso8601()
+      "changed_at" => theme.updated_at |> BotArmyLibraryRuntime.Timestamp.utc_iso8601(),
+      "created_at" => theme.inserted_at |> BotArmyLibraryRuntime.Timestamp.utc_iso8601(),
+      "updated_at" => theme.updated_at |> BotArmyLibraryRuntime.Timestamp.utc_iso8601()
     }
   end
 

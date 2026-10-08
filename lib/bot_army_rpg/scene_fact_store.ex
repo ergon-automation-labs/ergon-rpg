@@ -208,10 +208,13 @@ defmodule BotArmyRpg.SceneFactStore do
   # store is Mox-mocked, so this conversion — the one thing standing between the
   # database and every reader of a turn — had no test at all, and shipped a format the
   # dashboard could not parse.
+  #
+  # The rule itself now lives in the runtime library, since this was never an RPG problem:
+  # 69 call sites across 10 bots wrote zone-less times. Kept as a named delegation so this
+  # store's wire shape still has a single, testable door.
   @spec utc_iso8601(NaiveDateTime.t()) :: String.t()
-  def utc_iso8601(%NaiveDateTime{} = naive) do
-    naive |> DateTime.from_naive!("Etc/UTC") |> DateTime.to_iso8601()
-  end
+  def utc_iso8601(%NaiveDateTime{} = naive),
+    do: BotArmyLibraryRuntime.Timestamp.utc_iso8601(naive)
 
   defp changeset_error_reason(%Ecto.Changeset{} = changeset) do
     {:validation_error, Ecto.Changeset.traverse_errors(changeset, &translate_error/1)}

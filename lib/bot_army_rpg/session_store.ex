@@ -217,11 +217,11 @@ defmodule BotArmyRpg.SessionStore do
       "character_ids" => session.character_ids,
       "metadata" => session.metadata,
       "paused_at" =>
-        if(session.paused_at, do: session.paused_at |> NaiveDateTime.to_iso8601(), else: nil),
+        if(session.paused_at, do: session.paused_at |> BotArmyLibraryRuntime.Timestamp.utc_iso8601(), else: nil),
       "ended_at" =>
-        if(session.ended_at, do: session.ended_at |> NaiveDateTime.to_iso8601(), else: nil),
-      "created_at" => session.inserted_at |> NaiveDateTime.to_iso8601(),
-      "updated_at" => session.updated_at |> NaiveDateTime.to_iso8601()
+        if(session.ended_at, do: session.ended_at |> BotArmyLibraryRuntime.Timestamp.utc_iso8601(), else: nil),
+      "created_at" => session.inserted_at |> BotArmyLibraryRuntime.Timestamp.utc_iso8601(),
+      "updated_at" => session.updated_at |> BotArmyLibraryRuntime.Timestamp.utc_iso8601()
     }
   end
 
@@ -258,7 +258,7 @@ defmodule BotArmyRpg.SessionStore do
 
       db_session ->
         case BotArmyRpg.Repo.update(Ecto.Changeset.change(db_session, updated_at: now)) do
-          {:ok, _row} -> {:ok, Map.put(session, "updated_at", NaiveDateTime.to_iso8601(now))}
+          {:ok, _row} -> {:ok, Map.put(session, "updated_at", BotArmyLibraryRuntime.Timestamp.utc_iso8601(now))}
           {:error, reason} -> {:error, reason}
         end
     end
