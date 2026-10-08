@@ -114,19 +114,20 @@ publish-release: release
 	@echo "✓ Tarball created: rpg_bot-$(VERSION).tar.gz"
 	@echo ""
 	@echo "Creating GitHub release v$(VERSION)..."
-	@gh release create v$(VERSION) rpg_bot-$(VERSION).tar.gz \
-		--title "Release v$(VERSION)" \
-		--notes "RPG Bot Elixir release v$(VERSION). Download and deploy with Jenkins." \
-		--draft=false
+	@if gh release view v$(VERSION) >/dev/null 2>&1; then \
+		gh release upload v$(VERSION) rpg_bot-$(VERSION).tar.gz --clobber; \
+	else \
+		gh release create v$(VERSION) rpg_bot-$(VERSION).tar.gz \
+			--title "Release v$(VERSION)" \
+			--notes "RPG Bot Elixir release v$(VERSION)." \
+			--draft=false; \
+	fi
 	@echo "✓ Release published to GitHub"
 	@echo ""
 	@echo "Syncing release marker..."
 	@$(MAKE) sync-release-version
 	@echo ""
-	@echo "Next steps:"
-	@echo "1. Jenkins will automatically detect the new release"
-	@echo "2. Trigger deployment in Jenkins UI or wait for auto-deployment"
-	@echo "3. Check deployment status: make jenkins-logs"
+	@$(MAKE) publish-deploy-event TARGET=mini
 	@echo ""
 
 push-and-publish: git-push publish-release
