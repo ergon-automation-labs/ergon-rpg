@@ -25,3 +25,8 @@ mix.lock
 *.tar.xz
 _build_cursor_test/
 .push-validated
+
+# Build-state artifacts, not sources: the compile hash is per-checkout, and the
+# version proof is per-push. Neither belongs in the repo.
+.compile-hash
+.version_for_pre_push
