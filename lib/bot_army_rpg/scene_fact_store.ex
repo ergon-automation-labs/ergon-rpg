@@ -180,7 +180,9 @@ defmodule BotArmyRpg.SceneFactStore do
     <<uuid_int::128>> |> Ecto.UUID.cast() |> elem(1)
   end
 
-  defp schema_to_map(%BotArmyRpg.Schemas.SceneFact{} = fact) do
+  @doc false
+  @spec schema_to_map(BotArmyRpg.Schemas.SceneFact.t()) :: map()
+  def schema_to_map(%BotArmyRpg.Schemas.SceneFact{} = fact) do
     %{
       "id" => Ecto.UUID.cast!(fact.id) |> to_string(),
       "tenant_id" => fact.tenant_id |> to_string(),
@@ -189,9 +191,26 @@ defmodule BotArmyRpg.SceneFactStore do
       "content" => fact.content,
       "category" => fact.category,
       "source" => fact.source,
-      "created_at" => fact.inserted_at |> NaiveDateTime.to_iso8601(),
-      "updated_at" => fact.updated_at |> NaiveDateTime.to_iso8601()
+      "created_at" => utc_iso8601(fact.inserted_at),
+      "updated_at" => utc_iso8601(fact.updated_at)
     }
+  end
+
+  # `timestamps()` here is Ecto's `:naive_datetime`, which is UTC by definition
+  # (`Ecto.Schema.__timestamps__/1` autogenerates `NaiveDateTime.utc_now/0`) but which
+  # `NaiveDateTime.to_iso8601/1` writes down with the zone trimmed off. A reader given
+  # `"2026-10-08T00:46:52"` cannot tell that from a local clock, and the dashboard's
+  # `DateTime.from_iso8601/1` refused it outright — so every turn drew no time at all.
+  # Say the zone rather than leave the reader to infer it.
+  # Say the zone rather than leave the reader to infer it.
+  #
+  # Public (`@doc false`) only so the wire shape has a guard: every other test of this
+  # store is Mox-mocked, so this conversion — the one thing standing between the
+  # database and every reader of a turn — had no test at all, and shipped a format the
+  # dashboard could not parse.
+  @spec utc_iso8601(NaiveDateTime.t()) :: String.t()
+  def utc_iso8601(%NaiveDateTime{} = naive) do
+    naive |> DateTime.from_naive!("Etc/UTC") |> DateTime.to_iso8601()
   end
 
   defp changeset_error_reason(%Ecto.Changeset{} = changeset) do

@@ -389,6 +389,14 @@ the newest ask as a structured field, not as a line the reader has to recognise:
 | `%{"asked_of" => bot_id, "pending" => true, "asked_at" => iso8601}` | she was asked for the newest turn, and nothing has been written since |
 | `%{"asked_of" => bot_id, "pending" => false, "asked_at" => iso8601}` | she was asked, and a fact signed with her name is newer than the note |
 
+**Every time in this read names its zone** — `"2026-10-08T00:46:52Z"`, never
+`"2026-10-08T00:46:52"`. The facts are stored with Ecto's `:naive_datetime`, which *is*
+UTC, and `NaiveDateTime.to_iso8601/1` writes that down with the zone trimmed off. A
+reader cannot tell the trimmed form from a local clock, and Elixir's
+`DateTime.from_iso8601/1` refuses it outright (`{:error, :missing_offset}`), so the
+dashboard silently drew no time beside any turn at all. Say the zone; let the reader
+infer nothing.
+
 `asked_at` is the note's own `created_at`, so a reader can say **how long** the words have
 been missing rather than only that they are. It is additive: a reader that does not know
 the field reports the pending state exactly as it always did. There is deliberately no
