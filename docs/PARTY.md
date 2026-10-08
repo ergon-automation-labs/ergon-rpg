@@ -105,11 +105,11 @@ again.
 | `test/bot_army_rpg/party_store_db_test.exs` | `:stores` + `:integration` | real SQL, the real unique index, durability across a restart, the demote/promote transaction read off the rows, and a dropped table being a refusal |
 | `test/bot_army_rpg/handlers/party_handler_test.exs` | `:handlers` | the wire: the blank party's message names a registered route, and `null` vs an absent key are different requests |
 | `test/bot_army_rpg/party_read_test.exs` | `:core` | what a party read answers: no user never reaches the store, `:not_found` is an empty party rather than a refusal, a refusing store is carried to the caller, a name is keyed the way the routes key it, and who narrates is read from the party rather than invented |
-| `test/bot_army_rpg/party_narration_test.exs` | `:core` | the ask's payload and subject (published through the `:nats_publisher` seam and asserted on the event), the two kinds (`turn` vs `chat`), and the note an ask writes: its content (with the kind in it), its signing, the asked `bot_id` read back out of it, an old note with no kind in it, and the round's cursor (`last_asked/2`) |
-| `test/bot_army_rpg/party_rotation_test.exs` | `:core` | the round itself: the first ask, the round moving on, a cursor naming somebody who left, the author walked past, a table of one author, and an empty table |
-| `test/bot_army_rpg/party_chat_test.exs` | `:core` | the rule about lines: which facts are worth an answer, that the window's members are the table, that the round continues off the chat notes and not a turn's, that a table of one author answers `:own_words`, that a window with nobody in it answers `:no_members` and a window or history that cannot be read is `:unreadable` (not an empty table), and what a chat ask puts on the wire |
+| `test/bot_army_rpg/party_narration_test.exs` | `:core` | the ask's payload and subject (published through the `:nats_publisher` seam and asserted on the event), the two kinds (`turn` vs `chat`), and the note an ask writes: its content (with the kind in it), its signing, and the asked `bot_id` read back out of it |
+| `test/bot_army_rpg/party_rotation_test.exs` | `:core` | the pool itself: that everybody never asked stands ahead of everybody asked, that a member is placed by the newest ask rather than by a count, that a turn's ask and a pre-kind note move no chat round, that a note naming nobody places nobody — and, through `pick/3`, that a tie is drawn from at random, that the author is dropped from the round before the pool is read, that a table of one author has nobody left, and that an empty window has no turn to take |
+| `test/bot_army_rpg/party_chat_test.exs` | `:core` | the rule about lines: which facts are worth an answer (including that a note is not a line however it is signed), that the window's members are the table, that the pool is read off the chat notes and not a turn's, that a member holding the floor is not asked again and that a table where everyone holds it answers `:held`, that an answer releases the floor and the person's waiting line is what is carried, that the table stops answering itself at `@banter_turns` while a person's line is never capped, that a table of one author answers `:own_words`, that a window with nobody in it answers `:no_members` and a window or history that cannot be read is `:unreadable` (not an empty table), and what a chat ask puts on the wire |
 | `test/bot_army_rpg/handlers/gm_handler_test.exs` | `:handlers` | the wire of a turn: the GM's prose is signed `gm`; a party with a narrator is asked, the note names her and no GM fact is written; an ask that cannot be published leaves the GM narrating; a failing party read leaves the GM narrating |
-| `test/bot_army_rpg/handlers/scene_fact_handler_test.exs` | `:handlers` | the wire of a line: it is stored and the window's clock moves; a line in a window is handed to the member whose turn it is and noted; a window nobody was put in, a note the machinery wrote, and an ask the bus would not take all leave the line stored and asked of nobody |
+| `test/bot_army_rpg/handlers/scene_fact_handler_test.exs` | `:handlers` | the wire of a line: it is stored and the window's clock moves; a line in a window is handed to a member of the table and noted; a window nobody was put in, a note the machinery wrote, and an ask the bus would not take all leave the line stored and asked of nobody |
 | `test/bot_army_rpg/handlers/session_context_handler_test.exs` | `:handlers` | the window's read: turns are story (a note is not a turn), and `"narration"` reports the newest ask as pending, answered, or nothing at all |
 
 The DB test is excluded by default. It refuses to run against a database whose name does
@@ -257,8 +257,8 @@ which instruction she is given. Its rules live in `BotArmyCompanion.PartyNarrato
 
 A window's chat is scene facts, so the window used to be one-way: a line typed into it
 resolved no action, asked nobody, and sat there unanswered. `BotArmyRpg.PartyChat` is the
-rule that closes it — when a line lands in a window, it is handed to the member whose turn
-it is at that table (`kind: "chat"`, the line, and who said it).
+rule that closes it — when a line lands in a window, it is handed to **one** member of that
+table (`kind: "chat"`, the line, and who said it).
 
 Neither the surface nor the ask's subject changed. The window already reads an ask with no
 words yet from the note, so the same pending line and the same answered line a turn
@@ -268,42 +268,90 @@ Who is asked, and who is not:
 
 | Fact | Asked? | Why |
 |---|---|---|
-| a line somebody said | yes, the member whose turn it is at this table | the point of the change |
-| the answering member's own words | no | a line is already its author's answer; asking them to answer it is the loop. The round walks past the author |
+| a line somebody said | yes, one member of the table | the point of the change |
+| the answering member's own words | no | a line is already its author's answer; asking them to answer it is the loop. The author is not in the round at all |
 | the GM's prose (`source: "gm"`) | no | rpg already narrated it; a second answer to one turn is a second answer |
-| a note the machinery wrote (`source: "system"`) | no | `SceneFactStore.story?/1` is the one thing that says what is story, and bookkeeping is not something anybody said |
+| a note the machinery wrote (`category: "narration_asked"`) | no | it is rpg's own bookkeeping, not something anybody said. `SceneFactStore.story?/1` catches the note rpg writes, but the rule reads the category, so a note is not a line however it is signed |
 | nothing said (blank or missing `content`) | no | an empty line is not a line |
 
-### Who answers: the round
+### One ask at a time, per member
+
+Asking is cheap and answering is not: a model sits behind each member and the queue it
+draws from is bounded, so a window that asks five times while nobody has answered is a
+window asking for silence it will not get. A member who has been asked, and whose words are
+not newer than that ask, is **holding the floor** and is not asked again. When that leaves
+nobody to ask, the ask is `:held` and the line waits.
+
+The hold is **per member**, not per window, and that is deliberate. Per window would wedge
+the window behind one member who never answers — and a member who never answers is a state
+the table has to tolerate, not one it can assume away. Per member it is bounded by the size
+of the table (two companions mean at most two asks in flight, not two hundred), and a member
+whose bot is dead goes quiet without silencing the rest.
+
+When a member's answer lands, this runs again on their words; that is what releases the hold
+and asks the line that was waiting. The line an ask carries is then not the words that woke
+it but the one the table still owes:
+
+- the **owed line** — the newest line a *person* wrote after the newest chat ask. Asking a
+  member to answer a member is how the table starts talking to itself, so a member's own
+  answer never becomes the next member's subject;
+- failing that, the **newest line** worth an answer, which is what lets the table banter at
+  all (bounded, below);
+- failing that, the line at hand.
+
+### The table is not allowed to talk to itself
+
+A member's words are written back to `rpg.scene.fact.add` — the same subject that asks the
+next member — so with two or more members the table would converse with itself forever: A
+answers, B is asked, B answers, A is asked. That chain is bounded at `@banter_turns` (2)
+member lines since the newest **person's** line, after which the table goes quiet and waits
+(`:capped`).
+
+A person's line resets the count, and is never capped: it is the one thing the table was
+waiting for, and it is newer than itself. Banter is allowed — companions answering each
+other is the point of putting them in one window — it is the *unbounded* chain that is not.
+
+### Who answers, and who does not
 
 A turn is the narrator's, so a turn's ask goes to the party's narrator. A line in the chat
-is not a narration, so it goes **round the table** instead: the member after the one the
-chat asked last answers. No single member is the only voice in the conversation, and no line
-goes unanswered because the narrator happens to be the one who typed it.
+is not a narration, so it goes to a member of the table instead, chosen **at random from the
+members the chat has asked least recently**. No single member is the only voice in the
+conversation, no member is starved by an unlucky draw, and no line goes unanswered because
+the narrator happens to be the one who typed it.
 
-The rule is `BotArmyRpg.PartyRotation.pick/3` — a pure round over a list:
+The rule is `BotArmyRpg.PartyRotation` — pure functions over a list:
 
-- the **cursor** is the newest `"narration_asked"` note of kind `"chat"` in the window
-  (`PartyNarration.last_asked/2`). Reading it off the window's own facts, rather than off a
-  counter or a column, is what makes the round survive a restart and makes it fair:
-  counting asks and taking the remainder mis-fairs as soon as the author is skipped
-  (`B, B, C` instead of `B, C`);
-- a **turn** ask never moves the round, because only the chat notes are read for it;
+- `least_recently_asked/2` is the **pool**: the members with the smallest *placement*, where
+  a member's placement is the index of the newest `"chat"` note naming them, and a member no
+  note names has placement `-1`. `pick/3` draws from that pool with `Enum.random/1`;
+- a member is placed by the **newest** note naming them, not by how many times they have been
+  asked: the round asks the quiet, not the rare. A round *counted* rather than *placed*
+  mis-fairs as soon as the author is skipped (`B, B, C` instead of `B, C`);
+- random **among the least recently asked**, not uniformly over the table. A uniform draw
+  starves: with three members the odds that one is never drawn in ten asks are better than
+  one in fifty;
+- the pool is read off the **window's own notes**, not off a counter or a column, so a
+  restart, a redeploy and a second rpg never lose the round. Nothing about the draw is
+  stored; it is re-derived from the facts every time;
+- a **turn** ask never moves the chat's round, because only the `"chat"` notes are read;
 - a note written before the kind was recorded cannot say which lane asked, so it is read as
   a **turn**. At worst a round starts one member early, once;
-- the line's **author is walked past**, and only a table where *everyone* is the author
-  answers `:own_words`;
-- a cursor naming somebody no longer at the table starts the round over rather than picking
-  a stranger;
+- the line's **author is dropped from the round before the pool is read**, and only a table
+  where *everyone* is the author answers `:own_words`. Dropping the author from the pool
+  *after* the draw would strand a line whenever the author happened to be the only member at
+  the front of the round;
+- a note naming somebody no longer at the table places nobody;
 - a member who is not a name at all is not somebody the table can ask and is left out.
 
 ### Whose table a window's chat is answered by
 
 The table is the **window's** members — a session's `character_ids`, which is who the screen
-put in the scene — ordered by character id so that the same window reads the same order
-every time. A party member who was never put in this window is not at this table, and
+put in the scene. A party member who was never put in this window is not at this table, and
 handing them a line would put words in the mouth of somebody the window does not show. It
-also needs no party read at all, which is one less way for the ask to fail.
+also needs no party read at all, which is one less way for the ask to fail. The members are
+read as a map keyed by character id, so the same window reads the same members every time;
+their order carries no meaning — who answers is a placement and a draw, not a position in a
+list.
 
 A window with nobody in it therefore answers nobody (`:no_members`): the line is stored,
 read back, and who to put in the window is the screen's answer, not rpg's. A window or a
@@ -326,7 +374,9 @@ The ask cannot fail the line: the line is already stored and the caller is being
 the time it is attempted, so an ask that did not go out is a member nobody asked — the
 window then says their words are not there yet, which is true — and never a lost line. Every
 outcome is reported by its kind (`{:asked, member}`, `:no_members`, `:own_words`,
-`:not_a_turn`, `:no_window`, `:unreadable`, `{:error, reason}`) and logged.
+`:not_a_turn`, `:no_window`, `:held`, `:capped`, `:unreadable`, `{:error, reason}`) and
+logged. `:held` and `:capped` are the throttle working rather than a fault, and both are
+outcomes of *starting* an ask — never of one already sent.
 
 ## The words that have not arrived yet
 
@@ -409,3 +459,12 @@ The turn the table reads and the narration the caller is told are compared in
   `bot_army_companion` is the subscriber. A narrator whose bot is down, or a party whose
   narrator is a bot that does not answer, still leaves the window with `pending: true` —
   the honest absence, and what the window's `(she says nothing)` is for.
+- **The banter cap bounds a window, not a machine.** `@banter_turns` counts member lines
+  since the newest person's line in *one* window; two windows full of companions are two
+  bounded chains over one shared model. The cap stops a table running away with itself; it
+  is not a rate limit, and deliberately not one — a budget that cut a member off mid-sentence
+  would be a different and worse rule.
+- **Nothing notices a member that was asked and never answered.** `:held` is a decision about
+  whether to *start* an ask, not about what happened to one already sent. The floor a member
+  holds is the only record that an ask is outstanding, and it is read off the window's facts
+  like everything else here; there is no timeout that frees a member who has gone silent.

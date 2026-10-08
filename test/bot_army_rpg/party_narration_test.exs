@@ -41,16 +41,6 @@ defmodule BotArmyRpg.PartyNarrationTest do
 
   @member %{"character_id" => "c-narrator", "bot_id" => "companion_bot", "role" => "narrator"}
 
-  defp chat_note(bot_id), do: note("chat", bot_id)
-  defp turn_note(bot_id), do: note("turn", bot_id)
-
-  defp note(kind, bot_id) do
-    %{
-      "content" => PartyNarration.note_content(%{"bot_id" => bot_id}, kind),
-      "category" => PartyNarration.asked_category()
-    }
-  end
-
   @session %{
     "id" => "00000000-0000-0000-0000-0000000000se",
     "scene_description" => "a hall with one long table",
@@ -158,39 +148,6 @@ defmodule BotArmyRpg.PartyNarrationTest do
       assert PartyNarration.asked_of(%{"content" => "[narration_asked]   "}) == nil
       assert PartyNarration.asked_of(%{}) == nil
       assert PartyNarration.asked_kind(%{}) == nil
-    end
-  end
-
-  describe "last_asked/2" do
-    test "names the member the newest chat note asked, not the newest note of any lane" do
-      facts = [
-        chat_note("gtd_bot"),
-        turn_note("companion_bot"),
-        %{"content" => "the hall falls quiet", "category" => "narration"}
-      ]
-
-      assert PartyNarration.last_asked(facts, PartyNarration.chat_kind()) == "gtd_bot"
-      assert PartyNarration.last_asked(facts, PartyNarration.turn_kind()) == "companion_bot"
-    end
-
-    test "a lane that has asked nobody yet names nobody" do
-      assert PartyNarration.last_asked([turn_note("companion_bot")], "chat") == nil
-      assert PartyNarration.last_asked([], "chat") == nil
-    end
-
-    test "a history that is not a list of facts names nobody" do
-      assert PartyNarration.last_asked(nil, "chat") == nil
-      assert PartyNarration.last_asked(%{}, "chat") == nil
-    end
-
-    test "a note with no kind in it is read as a turn, so it moves no chat round" do
-      older = %{
-        "content" => "[narration_asked] companion_bot",
-        "category" => PartyNarration.asked_category()
-      }
-
-      assert PartyNarration.last_asked([older], "chat") == nil
-      assert PartyNarration.last_asked([older], "turn") == "companion_bot"
     end
   end
 

@@ -67,6 +67,18 @@ defmodule BotArmyRpg.Handlers.SceneFactHandler do
             "#{inspect(PartyRead.shape(reason))}; nobody was asked"
         )
 
+      # The two quiet outcomes, and both are the throttle working rather than a fault: the
+      # line is stored and readable either way, and it is asked once the table is free or a
+      # person speaks again. Logged because a window that has stopped answering should say
+      # why rather than look like one with nothing to say.
+      :held ->
+        Logger.info(
+          "[SceneFactHandler] Chat line held: every member at the table is still answering"
+        )
+
+      :capped ->
+        Logger.info("[SceneFactHandler] Chat line not asked: the table is waiting for a person")
+
       outcome when outcome in [:no_members, :own_words, :not_a_turn, :no_window, :unreadable] ->
         :ok
     end

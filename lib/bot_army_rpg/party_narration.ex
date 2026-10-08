@@ -46,10 +46,10 @@ defmodule BotArmyRpg.PartyNarration do
   ## The note says which kind of ask it was
 
   The note names its kind as well as the member (`[narration_asked] chat companion_bot`),
-  because the window's round is read off the *chat* notes alone (`last_asked/2`): a table
-  that resolved turns between chat lines would otherwise keep resetting the round to
-  whoever follows the narrator. A note written before the kind was recorded cannot say
-  which lane asked; those are read as turns (`asked_kind/1`), so at worst the round starts
+  because the window's round is read off the *chat* notes alone (`asked_kind/1`, read by
+  `PartyRotation`): a table that resolved turns between chat lines would otherwise keep
+  resetting the round to whoever follows the narrator. A note written before the kind was
+  recorded cannot say which lane asked; those are read as turns, so at worst the round starts
   one member early once.
   """
 
@@ -246,25 +246,6 @@ defmodule BotArmyRpg.PartyNarration do
       rest -> rest |> split_kind() |> elem(0)
     end
   end
-
-  @doc """
-  The member the newest note of this `kind` names, or `nil`.
-
-  `facts` is a window's facts in the order they were written (`SceneFactStore`'s own
-  order), so the newest is the last one that matches. This is the chat's round: whom the
-  chat asked last (`PartyRotation`).
-  """
-  def last_asked(facts, kind) when is_list(facts) do
-    facts
-    |> Enum.filter(&(asked?(&1) and asked_kind(&1) == kind))
-    |> List.last()
-    |> case do
-      nil -> nil
-      note -> asked_of(note)
-    end
-  end
-
-  def last_asked(_facts, _kind), do: nil
 
   # What follows the mark, trimmed; `nil` for a fact that is not a note at all. A *note* is
   # the category's answer (`asked?/1`), so prose that merely opens with the mark is nobody's

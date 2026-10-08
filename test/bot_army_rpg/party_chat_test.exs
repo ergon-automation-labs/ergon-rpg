@@ -39,8 +39,8 @@ defmodule BotArmyRpg.PartyChatTest do
   @tenant "00000000-0000-0000-0000-000000000001"
   @session "00000000-0000-0000-0000-00000000000e"
 
-  # Two members at the table, ordered by character id so that the round is a fact about the
-  # window rather than about the order a map happened to come back in.
+  # Two members at the table. The round is read off the window's own notes rather than off
+  # this map's order, so the order here is not what decides who answers.
   @table %{"c-arda" => "arda_bot", "c-bram" => "bram_bot"}
 
   @line %{
@@ -87,6 +87,10 @@ defmodule BotArmyRpg.PartyChatTest do
     }
   end
 
+  defp wrote(bot_id) do
+    %{"content" => "#{bot_id} says something", "source" => bot_id, "category" => "dialogue"}
+  end
+
   # The note is written through the scene-fact store, so a test that expects one holds it:
   # an ask that wrote none would be a Mox call with no expectation, and the test would say so.
   defp expect_note do
@@ -110,6 +114,16 @@ defmodule BotArmyRpg.PartyChatTest do
       refute PartyChat.askable?(%{"content" => "The hall falls quiet", "source" => "gm"})
     end
 
+    test "a note is not a line, however it is signed" do
+      # The note rpg writes is signed `system`, and `story?/1` catches that one. The ask rule
+      # does not lean on the signature: `asked?/1` reads the category, so the machinery's own
+      # bookkeeping is never handed to a member to answer, signed or not.
+      refute PartyChat.askable?(%{
+               "content" => "[narration_asked] chat arda_bot",
+               "category" => "narration_asked"
+             })
+    end
+
     test "nothing said is not a line: blank and missing content are not answered" do
       refute PartyChat.askable?(%{"content" => "", "source" => "operator"})
       refute PartyChat.askable?(%{"content" => "   ", "source" => "operator"})
@@ -121,8 +135,9 @@ defmodule BotArmyRpg.PartyChatTest do
   end
 
   describe "maybe_ask/3" do
-    test "the first line of a conversation is handed to the first member at the table" do
-      expect_window(@table)
+    test "a line is handed to a member at the table, and the ask says who and what" do
+      # A table of one, so that the wire shape below is asserted rather than drawn for.
+      expect_window(%{"c-arda" => "arda_bot"})
       expect_history([])
       expect_note()
 
@@ -152,7 +167,7 @@ defmodule BotArmyRpg.PartyChatTest do
       assert note["tenant_id"] == @tenant
     end
 
-    test "the round moves on: the member after the one the chat asked last answers" do
+    test "a member the chat has not asked answers before one it has" do
       expect_window(@table)
       expect_history([chat_note("arda_bot")])
       expect_note()
@@ -198,6 +213,91 @@ defmodule BotArmyRpg.PartyChatTest do
       assert :own_words = PartyChat.maybe_ask(@tenant, @session, line)
       refute_received {:published, _, _, _}
       refute_received {:noted, _}
+    end
+
+    test "a member who has been asked and has not answered is not asked again" do
+      expect_window(@table)
+      # `arda_bot` holds the floor: they were asked and nothing of theirs has landed since.
+      # The line is not asked of them again — and not asked of nobody either; it goes to the
+      # one member who is free.
+      expect_history([chat_note("arda_bot")])
+      expect_note()
+
+      assert {:asked, %{"bot_id" => "bram_bot"}} = PartyChat.maybe_ask(@tenant, @session, @line)
+    end
+
+    test "a line waits rather than piling a second ask onto a table that is mid-answer" do
+      expect_window(@table)
+      expect_history([chat_note("arda_bot"), chat_note("bram_bot")])
+
+      assert :held = PartyChat.maybe_ask(@tenant, @session, @line)
+      refute_received {:published, _, _, _}
+      refute_received {:noted, _}
+    end
+
+    test "an answer releases the floor, and the person's line that was waiting is asked" do
+      # `arda_bot` answered, and a person's line is still unanswered after it. The answer is
+      # not the line the table owes — handing a member a member's words is how the table
+      # starts talking to itself — so the ask carries the person's line.
+      expect_window(@table)
+
+      expect_history([
+        chat_note("arda_bot"),
+        wrote("arda_bot"),
+        %{"content" => "anyone about?", "source" => "operator", "category" => "dialogue"}
+      ])
+
+      expect_note()
+
+      assert {:asked, %{"bot_id" => "bram_bot"}} = PartyChat.maybe_ask(@tenant, @session, @line)
+      assert_receive {:published, _, %{"content" => "anyone about?"}, _}
+    end
+
+    test "the table stops answering itself and waits for a person" do
+      # Three at the table, so somebody is still free when the cap bites: with two, the author
+      # is walked past and this would be `:own_words`, which pins less.
+      expect_window(%{"c-arda" => "arda_bot", "c-bram" => "bram_bot", "c-cira" => "cira_bot"})
+
+      # A person spoke, and the table has written three member lines since. The last of them
+      # is the line being handed over now, and the cap is what stops it becoming a fourth.
+      line = wrote("cira_bot")
+
+      expect_history([
+        %{"content" => "hello", "source" => "operator", "category" => "dialogue"},
+        chat_note("arda_bot"),
+        wrote("arda_bot"),
+        chat_note("bram_bot"),
+        wrote("bram_bot"),
+        line
+      ])
+
+      assert :capped = PartyChat.maybe_ask(@tenant, @session, line)
+      refute_received {:published, _, _, _}
+      refute_received {:noted, _}
+    end
+
+    test "a person's line is never capped: it is what the table was waiting for" do
+      expect_window(%{"c-arda" => "arda_bot", "c-bram" => "bram_bot", "c-cira" => "cira_bot"})
+
+      # The cap is full, and then a person speaks. Their line resets the count — it is newer
+      # than itself — so the table answers it instead of going quiet on the person in it.
+      question = %{"content" => "still there?", "source" => "operator", "category" => "dialogue"}
+
+      expect_history([
+        %{"content" => "hello", "source" => "operator", "category" => "dialogue"},
+        chat_note("arda_bot"),
+        wrote("arda_bot"),
+        chat_note("bram_bot"),
+        wrote("bram_bot"),
+        question
+      ])
+
+      expect_note()
+
+      assert {:asked, %{"bot_id" => "cira_bot"}} =
+               PartyChat.maybe_ask(@tenant, @session, question)
+
+      assert_receive {:published, _, %{"content" => "still there?"}, _}
     end
 
     test "a window nobody has been put in answers nobody, and reads no history to say so" do

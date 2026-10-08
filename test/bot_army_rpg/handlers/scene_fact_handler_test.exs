@@ -112,7 +112,11 @@ defmodule BotArmyRpg.Handlers.SceneFactHandlerTest do
   end
 
   defp chat_note(bot_id) do
-    %{"content" => "[narration_asked] chat #{bot_id}", "category" => "narration_asked"}
+    %{
+      "content" => "[narration_asked] chat #{bot_id}",
+      "category" => "narration_asked",
+      "source" => "system"
+    }
   end
 
   defp a_line(session_id, extra) do
@@ -134,8 +138,8 @@ defmodule BotArmyRpg.Handlers.SceneFactHandlerTest do
       stub_fact_store()
       expect_a_window(session_id)
 
-      # The window is the table and the round is the window's own history: whoever the chat
-      # asked last is where the round stands, so the line after them is the line at hand.
+      # The window is the table and the round is the window's own notes: `gtd_bot` has been
+      # asked, so `companion_bot` — who has not — answers.
       expect_the_table(session_id, %{"c-member" => "gtd_bot", "c-narrator" => "companion_bot"})
       expect_history([chat_note("gtd_bot")])
 
