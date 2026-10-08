@@ -110,7 +110,7 @@ again.
 | `test/bot_army_rpg/party_chat_test.exs` | `:core` | the rule about lines: which facts are worth an answer (including that a note is not a line however it is signed), that the window's members are the table, that the pool is read off the chat notes and not a turn's, that a member holding the floor is not asked again and that a table where everyone holds it answers `:held`, that an answer releases the floor and the person's waiting line is what is carried, that the table stops answering itself at `@banter_turns` while a person's line is never capped, that a table of one author answers `:own_words`, that a window with nobody in it answers `:no_members` and a window or history that cannot be read is `:unreadable` (not an empty table), and what a chat ask puts on the wire |
 | `test/bot_army_rpg/handlers/gm_handler_test.exs` | `:handlers` | the wire of a turn: the GM's prose is signed `gm`; a party with a narrator is asked, the note names her and no GM fact is written; an ask that cannot be published leaves the GM narrating; a failing party read leaves the GM narrating |
 | `test/bot_army_rpg/handlers/scene_fact_handler_test.exs` | `:handlers` | the wire of a line: it is stored and the window's clock moves; a line in a window is handed to a member of the table and noted; a window nobody was put in, a note the machinery wrote, and an ask the bus would not take all leave the line stored and asked of nobody |
-| `test/bot_army_rpg/handlers/session_context_handler_test.exs` | `:handlers` | the window's read: turns are story (a note is not a turn), and `"narration"` reports the newest ask as pending, answered, or nothing at all |
+| `test/bot_army_rpg/handlers/session_context_handler_test.exs` | `:handlers` | the window's read: turns are story (a note is not a turn), `"scene_facts_at"` stays parallel to `"scene_facts"` under that filter, and `"narration"` reports the newest ask as pending, answered, or nothing at all — with the ask's own `created_at` |
 
 The DB test is excluded by default. It refuses to run against a database whose name does
 not end in `_test` (`BotArmyRpg.Test.PostgresHelper`), because its setup drops the
@@ -386,8 +386,29 @@ the newest ask as a structured field, not as a line the reader has to recognise:
 | `context["narration"]` | What it means |
 |---|---|
 | `nil` | nothing was asked in what was read (the newest `fact_limit` facts hold no note) |
-| `%{"asked_of" => bot_id, "pending" => true}` | she was asked for the newest turn, and nothing has been written since |
-| `%{"asked_of" => bot_id, "pending" => false}` | she was asked, and a fact signed with her name is newer than the note |
+| `%{"asked_of" => bot_id, "pending" => true, "asked_at" => iso8601}` | she was asked for the newest turn, and nothing has been written since |
+| `%{"asked_of" => bot_id, "pending" => false, "asked_at" => iso8601}` | she was asked, and a fact signed with her name is newer than the note |
+
+`asked_at` is the note's own `created_at`, so a reader can say **how long** the words have
+been missing rather than only that they are. It is additive: a reader that does not know
+the field reports the pending state exactly as it always did. There is deliberately no
+`due_at` beside it — rpg publishes the ask once and never awaits it (see **the ask is
+published once and never awaited** below), so there is no deadline for the bot to report
+and a reader must not invent one.
+
+### When each turn was written
+
+`context["scene_facts"]` is the window's turns, newest first, and
+`context["scene_facts_at"]` is when each was written — **parallel to it, index for
+index**. Both are built in one pass over `facts`, filtered by
+`SceneFactStore.story?/1` together, so a note the machinery wrote is absent from the
+times as well as from the words; a second, unfiltered pass would shift every turn's
+time onto the wrong line.
+
+`created_at` is already the key this read sorts by, so nothing new is collected — the
+timestamps were being discarded one line after they were used. A bot that does not send
+the field is unaffected, and a reader that ignores it still sees the same `scene_facts`
+it always did.
 
 Two rules make the third row honest. "She answered" is a fact **newer** than the note whose
 `source` is the asked `bot_id` — a bot's turn is written by the bot, so the signer is the

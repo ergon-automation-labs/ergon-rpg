@@ -785,11 +785,25 @@ defmodule BotArmyRpg.Handlers.SessionContextHandlerTest do
   end
 
   defp turn(id, content, source) do
+    turn_at(id, content, source, "2026-10-01T12:00:00")
+  end
+
+  defp turn_at(id, content, source, created_at) do
     %{
       "id" => id,
       "content" => content,
       "source" => source,
-      "created_at" => "2026-10-01T12:00:00"
+      "created_at" => created_at
+    }
+  end
+
+  defp note_at(id, bot_id, created_at) do
+    %{
+      "id" => id,
+      "content" => PartyNarration.note_content(%{"bot_id" => bot_id}),
+      "category" => PartyNarration.asked_category(),
+      "source" => "system",
+      "created_at" => created_at
     }
   end
 
@@ -818,7 +832,11 @@ defmodule BotArmyRpg.Handlers.SessionContextHandlerTest do
 
     # The newest ask is the one read, so an older ask for another bot is not what this
     # window is waiting on.
-    assert context["narration"] == %{"asked_of" => "companion_bot", "pending" => true}
+    assert context["narration"] == %{
+             "asked_of" => "companion_bot",
+             "pending" => true,
+             "asked_at" => "2026-10-01T12:00:00"
+           }
   end
 
   test "a turn signed with her name is her answer" do
@@ -835,7 +853,12 @@ defmodule BotArmyRpg.Handlers.SessionContextHandlerTest do
     assert {:ok, context} = gather(tenant, user, session_id)
 
     assert context["scene_facts"] == ["she looked up from the ledger", "the GM closed the door"]
-    assert context["narration"] == %{"asked_of" => "companion_bot", "pending" => false}
+
+    assert context["narration"] == %{
+             "asked_of" => "companion_bot",
+             "pending" => false,
+             "asked_at" => "2026-10-01T12:00:00"
+           }
   end
 
   test "a turn someone else wrote is not her answer" do
@@ -850,7 +873,83 @@ defmodule BotArmyRpg.Handlers.SessionContextHandlerTest do
 
     assert {:ok, context} = gather(tenant, user, session_id)
 
-    assert context["narration"] == %{"asked_of" => "companion_bot", "pending" => true}
+    assert context["narration"] == %{
+             "asked_of" => "companion_bot",
+             "pending" => true,
+             "asked_at" => "2026-10-01T12:00:00"
+           }
+  end
+
+  test "a window that was asked reports when the ask was made, not when the newest fact was" do
+    tenant = "00000000-0000-0000-0000-000000000099"
+    user = "00000000-0000-0000-0000-0000000000aa"
+    session_id = "00000000-0000-0000-0000-0000000000cc"
+
+    narration_session(tenant, user, session_id, [
+      turn_at("f-3", "someone said something after the ask", "gtd_bot", "2026-10-01T13:45:00"),
+      note_at("note-1", "companion_bot", "2026-10-01T12:00:00")
+    ])
+
+    assert {:ok, context} = gather(tenant, user, session_id)
+
+    # The ask is at noon and the newest fact is not; an elapsed-time reading has to be of
+    # the ask, or it would report a wait of zero at the moment she fell furthest behind.
+    assert context["narration"]["asked_at"] == "2026-10-01T12:00:00"
+  end
+
+  test "every turn reports its own time, aligned index for index with the words" do
+    tenant = "00000000-0000-0000-0000-000000000099"
+    user = "00000000-0000-0000-0000-0000000000aa"
+    session_id = "00000000-0000-0000-0000-0000000000cc"
+
+    # Handed over out of order on purpose: the read sorts by time, so the two lists have
+    # to come out of `facts` in one order, and each turn keeps its own stamp rather than
+    # the window's newest one.
+    narration_session(tenant, user, session_id, [
+      turn_at("f-1", "an earlier thing", "gm", "2026-10-01T09:30:00"),
+      turn_at("f-2", "the newest thing", "gm", "2026-10-01T12:00:00")
+    ])
+
+    assert {:ok, context} = gather(tenant, user, session_id)
+
+    assert context["scene_facts"] == ["the newest thing", "an earlier thing"]
+    assert context["scene_facts_at"] == ["2026-10-01T12:00:00", "2026-10-01T09:30:00"]
+  end
+
+  test "a note the machinery wrote is absent from the times as well as from the words" do
+    tenant = "00000000-0000-0000-0000-000000000099"
+    user = "00000000-0000-0000-0000-0000000000aa"
+    session_id = "00000000-0000-0000-0000-0000000000cc"
+
+    # The note sits between the two turns and is filtered out of both lists. A second,
+    # unfiltered pass over `facts` would leave its time in and shift every turn after it
+    # onto the wrong line — which is why the pairs are built in one pass.
+    narration_session(tenant, user, session_id, [
+      turn_at("f-3", "the newest thing", "gm", "2026-10-01T12:00:00"),
+      note_at("note-1", "companion_bot", "2026-10-01T11:00:00"),
+      turn_at("f-1", "an earlier thing", "gm", "2026-10-01T09:30:00")
+    ])
+
+    assert {:ok, context} = gather(tenant, user, session_id)
+
+    assert context["scene_facts"] == ["the newest thing", "an earlier thing"]
+    assert context["scene_facts_at"] == ["2026-10-01T12:00:00", "2026-10-01T09:30:00"]
+    refute "2026-10-01T11:00:00" in context["scene_facts_at"]
+  end
+
+  test "an empty window reports empty times rather than nothing" do
+    tenant = "00000000-0000-0000-0000-000000000099"
+    user = "00000000-0000-0000-0000-0000000000aa"
+    session_id = "00000000-0000-0000-0000-0000000000cc"
+
+    narration_session(tenant, user, session_id, [])
+
+    assert {:ok, context} = gather(tenant, user, session_id)
+
+    # `[]` is a reading of an empty window; an absent field would be a different answer,
+    # and a screen that cannot tell them apart invents a turn count.
+    assert context["scene_facts"] == []
+    assert context["scene_facts_at"] == []
   end
 
   test "a window nobody has been asked about reports no narration at all" do

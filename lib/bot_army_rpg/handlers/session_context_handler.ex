@@ -60,6 +60,8 @@ defmodule BotArmyRpg.Handlers.SessionContextHandler do
          {:ok, facts} <- fetch_scene_facts(tenant_id, session["id"], fact_limit),
          {:ok, character} <- fetch_character(tenant_id, user_id, bot_id),
          {:ok, theme} <- fetch_theme(tenant_id) do
+      turns = story_turns(facts)
+
       context =
         %{
           "session_id" => session["id"],
@@ -68,7 +70,8 @@ defmodule BotArmyRpg.Handlers.SessionContextHandler do
           "session_metadata" => session["metadata"] || %{},
           "character" => character,
           "theme" => theme,
-          "scene_facts" => story_contents(facts),
+          "scene_facts" => contents_of(turns),
+          "scene_facts_at" => times_of(turns),
           "narration" => narration(facts),
           "tenant_id" => tenant_id,
           "user_id" => user_id
@@ -194,12 +197,22 @@ defmodule BotArmyRpg.Handlers.SessionContextHandler do
   # called as the pure function it is (no store, no database), so a store double does not
   # have to answer for it. Both window reads use it, so a note cannot be a turn in one and
   # not in the other.
-  defp story_contents(facts) do
+  #
+  # The turns and their times are built in one pass and kept as pairs: the screen says how
+  # recent each line is, and two filters over `facts` would be two chances to disagree
+  # about which facts are turns.
+  #
+  # Newest first, like `facts`. `scene_facts` keeps its exact old shape, so every
+  # existing consumer is untouched; `scene_facts_at` rides beside it, index for index.
+  # A bot that does not know the second field simply does not read it.
+  defp story_turns(facts) do
     facts
     |> Enum.filter(&BotArmyRpg.SceneFactStore.story?/1)
-    |> Enum.map(& &1["content"])
+    |> Enum.map(&{&1["content"], &1["created_at"]})
   end
 
+  defp contents_of(turns), do: Enum.map(turns, &elem(&1, 0))
+  defp times_of(turns), do: Enum.map(turns, &elem(&1, 1))
   # Whether the newest ask in this window has an answer yet. Three answers: no ask in what
   # was read (`nil`), an ask with nothing written since (`"pending" => true`), and an ask she
   # has since written for (`"pending" => false`). `asked_of` names her in all of them, so a
@@ -221,7 +234,11 @@ defmodule BotArmyRpg.Handlers.SessionContextHandler do
 
         %{
           "asked_of" => asked_of,
-          "pending" => not Enum.any?(newer, &(&1["source"] == asked_of))
+          "pending" => not Enum.any?(newer, &(&1["source"] == asked_of)),
+          # When the ask was made, so a screen can say how long the words have been
+          # missing rather than only that they are. Additive: a reader that does not
+          # know the field reports the pending state exactly as it always did.
+          "asked_at" => ask["created_at"]
         }
     end
   end
@@ -302,6 +319,8 @@ defmodule BotArmyRpg.Handlers.SessionContextHandler do
            {:ok, facts} <- fetch_scene_facts(tenant_id, session["id"], 10),
            {:ok, theme} <- fetch_theme(tenant_id),
            {:ok, party} <- fetch_party(tenant_id, user_id) do
+        turns = story_turns(facts)
+
         context = %{
           "bot_id" => bot_id,
           "tenant_id" => tenant_id,
@@ -312,7 +331,8 @@ defmodule BotArmyRpg.Handlers.SessionContextHandler do
             "scene_description" => session["scene_description"],
             "metadata" => session["metadata"] || %{}
           },
-          "scene_facts" => story_contents(facts),
+          "scene_facts" => contents_of(turns),
+          "scene_facts_at" => times_of(turns),
           "theme" => theme,
           "party" => party
         }
