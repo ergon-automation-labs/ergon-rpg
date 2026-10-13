@@ -13,8 +13,6 @@ defmodule BotArmyRpg.ProgressionSubscriber do
   alias BotArmyRpg.LootEngine
   alias BotArmyRpg.Progression.Companions
 
-  @reconnect_delay_ms 5_000
-
   @subjects [
     "events.gtd.task.created",
     "events.gtd.task.completed",
@@ -28,49 +26,25 @@ defmodule BotArmyRpg.ProgressionSubscriber do
 
   @impl true
   def init(_opts) do
-    {:ok, %{subscriptions: [], conn: nil}, {:continue, :connect}}
+    {:ok, %{}, {:continue, :connect}}
   end
 
   @impl true
   def handle_continue(:connect, state) do
-    case GenServer.call(BotArmyLibraryRuntime.NATS.Connection, :get_connection, 5_000) do
-      {:ok, conn} ->
-        BotArmyLibraryRuntime.NATS.Connection.subscribe_to_status()
+    # Declared once and held by the Connection, which re-subscribes this exact list
+    # on every link it starts. The old per-subject `Gnat.sub/3` on each
+    # `{:nats, :connected}` added a fresh subscription per flap — measured live
+    # 2026-10-13: the air<->mini leaf had flapped 8 times, multiplying every
+    # progression subject, so a single `events.gtd.task.completed` ran this handler
+    # over and over and awarded its XP over and over. `Registry.register/3` replaces
+    # rather than appends, so one event now costs one award.
+    :ok = BotArmyLibraryRuntime.NATS.Connection.subscribe(@subjects)
 
-        Logger.info(
-          "[ProgressionSubscriber] Connected to NATS, subscribing to progression events"
-        )
+    Logger.info(
+      "[ProgressionSubscriber] Subscribing to #{length(@subjects)} progression event subjects"
+    )
 
-        subscriptions =
-          @subjects
-          |> Enum.map(fn subject ->
-            case Gnat.sub(conn, self(), subject) do
-              {:ok, sub} ->
-                Logger.info("[ProgressionSubscriber] Subscribed to #{subject}")
-                sub
-
-              {:error, reason} ->
-                Logger.error(
-                  "[ProgressionSubscriber] Failed to subscribe to #{subject}: #{inspect(reason)}"
-                )
-
-                nil
-            end
-          end)
-          |> Enum.reject(&is_nil/1)
-
-        {:noreply, %{state | subscriptions: subscriptions, conn: conn}}
-
-      {:error, _reason} ->
-        Logger.warning("[ProgressionSubscriber] NATS connection not ready, will retry")
-        Process.send_after(self(), :connect_retry, @reconnect_delay_ms)
-        {:noreply, state}
-    end
-  end
-
-  @impl true
-  def handle_info(:connect_retry, state) do
-    {:noreply, state, {:continue, :connect}}
+    {:noreply, state}
   end
 
   @impl true
@@ -101,19 +75,6 @@ defmodule BotArmyRpg.ProgressionSubscriber do
     end
 
     {:noreply, state}
-  end
-
-  @impl true
-  def handle_info({:nats, :disconnected}, state) do
-    Logger.warning("[ProgressionSubscriber] Disconnected from NATS, will reconnect")
-    Process.send_after(self(), :connect_retry, @reconnect_delay_ms)
-    {:noreply, %{state | subscriptions: [], conn: nil}}
-  end
-
-  @impl true
-  def handle_info({:nats, :connected}, state) do
-    Logger.info("[ProgressionSubscriber] Reconnected to NATS, re-subscribing")
-    {:noreply, state, {:continue, :connect}}
   end
 
   @impl true

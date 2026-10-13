@@ -12,8 +12,6 @@ defmodule BotArmyRpg.LoreSubscriber do
 
   alias BotArmyRpg.LoreKeeper
 
-  @reconnect_delay_ms 5_000
-
   @subjects [
     "gossip.intent.proposed",
     "gossip.intent.resolved",
@@ -29,46 +27,18 @@ defmodule BotArmyRpg.LoreSubscriber do
 
   @impl true
   def init(_opts) do
-    {:ok, %{subscriptions: [], conn: nil}, {:continue, :connect}}
+    {:ok, %{}, {:continue, :connect}}
   end
 
   @impl true
   def handle_continue(:connect, state) do
-    case GenServer.call(BotArmyLibraryRuntime.NATS.Connection, :get_connection, 5_000) do
-      {:ok, conn} ->
-        BotArmyLibraryRuntime.NATS.Connection.subscribe_to_status()
-        Logger.info("[LoreSubscriber] Connected to NATS, subscribing to allowlisted subjects")
+    # Declared once; the Connection re-subscribes this list on every link it starts,
+    # so a flap cannot leave the Keeper dark — or multiply its subscriptions.
+    :ok = BotArmyLibraryRuntime.NATS.Connection.subscribe(@subjects)
 
-        subscriptions =
-          @subjects
-          |> Enum.map(fn subject ->
-            case Gnat.sub(conn, self(), subject) do
-              {:ok, sub} ->
-                Logger.info("[LoreSubscriber] Subscribed to #{subject}")
-                sub
+    Logger.info("[LoreSubscriber] Subscribing to #{length(@subjects)} allowlisted subjects")
 
-              {:error, reason} ->
-                Logger.error(
-                  "[LoreSubscriber] Failed to subscribe to #{subject}: #{inspect(reason)}"
-                )
-
-                nil
-            end
-          end)
-          |> Enum.reject(&is_nil/1)
-
-        {:noreply, %{state | subscriptions: subscriptions, conn: conn}}
-
-      {:error, _reason} ->
-        Logger.warning("[LoreSubscriber] NATS connection not ready, will retry")
-        Process.send_after(self(), :connect_retry, @reconnect_delay_ms)
-        {:noreply, state}
-    end
-  end
-
-  @impl true
-  def handle_info(:connect_retry, state) do
-    {:noreply, state, {:continue, :connect}}
+    {:noreply, state}
   end
 
   @impl true
@@ -76,7 +46,8 @@ defmodule BotArmyRpg.LoreSubscriber do
     Logger.debug("[LoreSubscriber] Received on #{msg.topic}")
 
     with {:ok, decoded} <- BotArmyLibraryCore.NATS.Decoder.decode(msg.body),
-         tenant_id <- Map.get(decoded, "tenant_id") || BotArmyLibraryRuntime.Tenant.default_tenant_id(),
+         tenant_id <-
+           Map.get(decoded, "tenant_id") || BotArmyLibraryRuntime.Tenant.default_tenant_id(),
          {:ok, payload} <- event_to_lore_payload(msg.topic, decoded) do
       case LoreKeeper.ingest(tenant_id, payload) do
         {:ok, _} -> :ok
@@ -88,19 +59,6 @@ defmodule BotArmyRpg.LoreSubscriber do
     end
 
     {:noreply, state}
-  end
-
-  @impl true
-  def handle_info({:nats, :disconnected}, state) do
-    Logger.warning("[LoreSubscriber] Disconnected from NATS, will reconnect")
-    Process.send_after(self(), :connect_retry, @reconnect_delay_ms)
-    {:noreply, %{state | subscriptions: [], conn: nil}}
-  end
-
-  @impl true
-  def handle_info({:nats, :connected}, state) do
-    Logger.info("[LoreSubscriber] Reconnected to NATS, re-subscribing")
-    {:noreply, state, {:continue, :connect}}
   end
 
   @impl true

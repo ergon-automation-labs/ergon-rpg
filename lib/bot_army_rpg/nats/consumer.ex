@@ -29,7 +29,6 @@ defmodule BotArmyRpg.NATS.Consumer do
     WorldSnapshotHandler
   }
 
-  @reconnect_delay_ms 5000
   @registry_heartbeat_ms 20_000
   @version Mix.Project.config()[:version]
 
@@ -304,55 +303,33 @@ defmodule BotArmyRpg.NATS.Consumer do
   def init(opts) do
     Logger.info("[RPG Consumer] Starting")
 
-    state = %{
-      subscriptions: [],
-      conn: nil,
-      opts: opts
-    }
-
-    {:ok, state, {:continue, :connect}}
+    {:ok, %{opts: opts}, {:continue, :connect}}
   end
 
   @impl true
   def handle_continue(:connect, state) do
-    case GenServer.call(Connection, :get_connection, 5000) do
-      {:ok, conn} ->
-        Connection.subscribe_to_status()
-        Logger.info("[RPG Consumer] Connected to NATS, subscribing to topics")
+    # Declared once and handed to the Connection, which holds this exact list and
+    # re-subscribes it on every link it starts. Two things come from doing it this
+    # way rather than per-subject `Gnat.sub/3` on each `{:nats, :connected}`:
+    #
+    #   1. A flapping broker cannot leave the bot dark — the registration survives
+    #      the Gnat process, so the replacement link carries the subjects.
+    #   2. A flapping broker cannot *multiply* the subscriptions. `Registry.register/3`
+    #      replaces a pid's value instead of appending, so no matter how many times
+    #      this runs, one subject means one subscription.
+    #
+    # The old shape did neither. Measured live 2026-10-13: the air<->mini leaf had
+    # flapped 8 times and `rpg.character.create` had **112** subscriptions on it, so
+    # a single request ran the handler twice and minted two characters (one of them
+    # hers). One request must cost one write.
+    :ok = Connection.subscribe(subscription_topics())
 
-        subscriptions =
-          subscription_topics()
-          |> Enum.map(fn subject ->
-            case Gnat.sub(conn, self(), subject) do
-              {:ok, sub} ->
-                Logger.info("[RPG Consumer] Subscribed to #{subject}")
-                sub
+    Logger.info("[RPG Consumer] Subscribing to #{length(@subjects)} subjects")
 
-              {:error, reason} ->
-                Logger.error(
-                  "[RPG Consumer] Failed to subscribe to #{subject}: #{inspect(reason)}"
-                )
+    BotArmyRegistry.register("rpg", @subjects, @version)
+    Process.send_after(self(), :registry_heartbeat, @registry_heartbeat_ms)
 
-                nil
-            end
-          end)
-          |> Enum.filter(&(not is_nil(&1)))
-
-        BotArmyRegistry.register("rpg", @subjects, @version)
-        Process.send_after(self(), :registry_heartbeat, @registry_heartbeat_ms)
-
-        {:noreply, %{state | subscriptions: subscriptions, conn: conn}}
-
-      {:error, _reason} ->
-        Logger.warning("[RPG Consumer] NATS connection not ready, will retry")
-        Process.send_after(self(), :connect_retry, @reconnect_delay_ms)
-        {:noreply, state}
-    end
-  end
-
-  @impl true
-  def handle_info(:connect_retry, state) do
-    {:noreply, state, {:continue, :connect}}
+    {:noreply, state}
   end
 
   @impl true
@@ -361,7 +338,7 @@ defmodule BotArmyRpg.NATS.Consumer do
       Logger.debug("[RPG Consumer] Received message on #{msg.topic}")
 
       if msg.reply_to do
-        handle_request_reply(msg, state)
+        handle_request_reply(msg)
       else
         case Decoder.decode(msg.body) do
           {:ok, decoded_message} ->
@@ -376,24 +353,6 @@ defmodule BotArmyRpg.NATS.Consumer do
     end)
 
     {:noreply, state}
-  end
-
-  @impl true
-  def handle_info({:nats, :disconnected}, state) do
-    Logger.warning("[RPG Consumer] Disconnected from NATS, will reconnect")
-    Process.send_after(self(), :connect_retry, @reconnect_delay_ms)
-    {:noreply, %{state | subscriptions: [], conn: nil}}
-  end
-
-  @impl true
-  def handle_info({:nats, :connected}, state) do
-    Logger.info("[RPG Consumer] Reconnected to NATS, re-subscribing")
-    {:noreply, state, {:continue, :connect}}
-  end
-
-  @impl true
-  def handle_info(:reconnect, state) do
-    {:noreply, state, {:continue, :connect}}
   end
 
   @impl true
@@ -422,12 +381,13 @@ defmodule BotArmyRpg.NATS.Consumer do
       {:error, :handler_crashed}
   end
 
-  defp handle_request_reply(msg, state) do
+  defp handle_request_reply(msg) do
     reply = encode_reply(dispatch(msg.topic, decode_request_body(msg.body)))
 
-    if state.conn do
-      Gnat.pub(state.conn, msg.reply_to, reply)
-    end
+    # The answer goes out on the same link the request arrived on (`msg.gnat`). A
+    # replaced connection can no longer send into a dead socket, and this module no
+    # longer has to remember which link happened to be current.
+    Connection.publish(msg.gnat, msg.reply_to, reply)
   end
 
   defp route_request(topic, body) do

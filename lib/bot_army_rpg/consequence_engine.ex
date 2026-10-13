@@ -17,8 +17,6 @@ defmodule BotArmyRpg.ConsequenceEngine do
   alias BotArmyLibraryRuntime.NATS.{Connection, Publisher}
   alias BotArmyLibraryCore.NATS.Decoder
 
-  @reconnect_delay_ms 5_000
-
   @category_to_skill %{
     "job_search" => "terrain_daily_system_challenge",
     "code_review" => "terrain_daily_system_challenge",
@@ -34,49 +32,18 @@ defmodule BotArmyRpg.ConsequenceEngine do
   @impl true
   def init(_opts) do
     Logger.info("[ConsequenceEngine] Starting")
-    {:ok, %{subscriptions: [], conn: nil}, {:continue, :connect}}
+    {:ok, %{}, {:continue, :connect}}
   end
 
   @impl true
   def handle_continue(:connect, state) do
-    case GenServer.call(Connection, :get_connection, 5_000) do
-      {:ok, conn} ->
-        Connection.subscribe_to_status()
+    # Declared once; the Connection re-subscribes it on every link it starts, so a
+    # flap cannot multiply `rpg.quest.completed` into N consequences per event.
+    :ok = Connection.subscribe(["rpg.quest.completed"])
 
-        Logger.info(
-          "[ConsequenceEngine] Connected to NATS, subscribing to quest completion events"
-        )
+    Logger.info("[ConsequenceEngine] Subscribing to quest completion events")
 
-        subscriptions =
-          ["rpg.quest.completed"]
-          |> Enum.map(fn subject ->
-            case Gnat.sub(conn, self(), subject) do
-              {:ok, sub} ->
-                Logger.info("[ConsequenceEngine] Subscribed to #{subject}")
-                sub
-
-              {:error, reason} ->
-                Logger.error(
-                  "[ConsequenceEngine] Failed to subscribe to #{subject}: #{inspect(reason)}"
-                )
-
-                nil
-            end
-          end)
-          |> Enum.reject(&is_nil/1)
-
-        {:noreply, %{state | subscriptions: subscriptions, conn: conn}}
-
-      {:error, _reason} ->
-        Logger.warning("[ConsequenceEngine] NATS connection not ready, will retry")
-        Process.send_after(self(), :connect_retry, @reconnect_delay_ms)
-        {:noreply, state}
-    end
-  end
-
-  @impl true
-  def handle_info(:connect_retry, state) do
-    {:noreply, state, {:continue, :connect}}
+    {:noreply, state}
   end
 
   @impl true
