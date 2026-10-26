@@ -35,7 +35,7 @@ defmodule BotArmyRpg.Handlers.GMHandler do
 
       case session_store().update(tenant_id, session_id, %{"metadata" => turn_meta}) do
         {:ok, updated} ->
-          actor = TurnManager.current_actor(updated)
+          actor = updated |> TurnManager.current_actor() |> kind_of(tenant_id)
           publish_turn_started(updated, actor, tenant_id)
 
           # Opening the table on a companion's turn is not a table waiting for a player:
@@ -63,7 +63,7 @@ defmodule BotArmyRpg.Handlers.GMHandler do
 
       case session_store().update(tenant_id, session_id, %{"metadata" => next_meta}) do
         {:ok, updated} ->
-          actor = TurnManager.current_actor(updated)
+          actor = updated |> TurnManager.current_actor() |> kind_of(tenant_id)
           publish_turn_started(updated, actor, tenant_id)
 
           bot_result = maybe_enqueue_bot_autoplay(actor, updated, tenant_id, session_id)
@@ -88,7 +88,7 @@ defmodule BotArmyRpg.Handlers.GMHandler do
     session_id = params["session_id"]
 
     with {:ok, session} <- session_store().get(tenant_id, session_id) do
-      actor = TurnManager.current_actor(session)
+      actor = session |> TurnManager.current_actor() |> kind_of(tenant_id)
       turn_state = get_in(session, ["metadata", "turn_state"]) || %{}
 
       {:ok,
@@ -489,7 +489,7 @@ defmodule BotArmyRpg.Handlers.GMHandler do
            session_store().update(tenant_id, session_id, %{
              "metadata" => TurnManager.advance_turn(session)
            }),
-         actor when is_map(actor) <- TurnManager.current_actor(updated) do
+         actor when is_map(actor) <- kind_of(TurnManager.current_actor(updated), tenant_id) do
       publish_turn_started(updated, actor, tenant_id)
 
       if actor["type"] == "bot" and plays < party_size(updated) do
@@ -504,6 +504,32 @@ defmodule BotArmyRpg.Handlers.GMHandler do
         :ok
     end
   end
+
+  # Who plays a seat. `TurnManager.current_actor/1` can only guess: `character_ids` records
+  # *who plays* each character in one slot, a user id for a person and a bot id for a bot,
+  # and both are just binaries. Measured 2026-10-26: her own seat carried
+  # `"00000000-0000-0000-0000-000000000002"`, the engine read it as a bot, and it played
+  # "Default User strikes at the enemy" for her — which is why the table had no turn she
+  # could take, only turns taken in her name.
+  #
+  # The character store knows which it is, so the kind is decided here and nowhere else.
+  # A character that cannot be read is never auto-played: putting words in somebody's mouth
+  # is worse than a turn that waits for them.
+  defp kind_of(%{"character_id" => character_id} = actor, tenant_id)
+       when is_binary(character_id) do
+    case character_store().get(tenant_id, character_id) do
+      {:ok, %{"user_id" => user_id}} when is_binary(user_id) and user_id != "" ->
+        Map.put(actor, "type", "player")
+
+      {:ok, _bot_character} ->
+        Map.put(actor, "type", "bot")
+
+      _unreadable ->
+        Map.put(actor, "type", "player")
+    end
+  end
+
+  defp kind_of(actor, _tenant_id), do: actor
 
   defp party_size(session) do
     session

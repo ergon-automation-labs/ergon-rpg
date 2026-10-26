@@ -137,11 +137,67 @@ defmodule BotArmyRpg.Handlers.GMHandlerTest do
          }}
       end)
 
+      stub(BotArmyRpg.CharacterStoreMock, :get, fn _tenant, "second-character" ->
+        {:ok, %{"id" => "second-character", "bot_id" => "gtd_bot"}}
+      end)
+
       assert {:ok, answer} = GMHandler.handle_turn_whose(payload())
       assert answer["round"] == 3
       assert answer["active_index"] == 1
       assert answer["turn_order"] == [@character, "second-character"]
       assert answer["current_actor"]["character_id"] == "second-character"
+      assert answer["current_actor"]["type"] == "bot"
+    end
+  end
+
+  describe "who plays a seat" do
+    # `character_ids` records *who plays* a character in one slot: a user id for a person,
+    # a bot id for a bot. `TurnManager.current_actor/1` can only see a binary, and read
+    # every seat as a bot's — measured 2026-10-26 on the live bot, where her own seat
+    # carried her user id and the engine played "Default User strikes at the enemy" for
+    # her. The kind comes from the character store, and these are the three answers.
+
+    defp whose_with_turn_order(order) do
+      stub(BotArmyRpg.SessionStoreMock, :get, fn _tenant, _session ->
+        {:ok,
+         %{
+           "status" => "active",
+           "id" => @session,
+           "metadata" => %{
+             "turn_state" => %{"round" => 1, "active_index" => 0, "turn_order" => order}
+           }
+         }}
+      end)
+
+      {:ok, answer} = GMHandler.handle_turn_whose(payload())
+      answer["current_actor"]
+    end
+
+    test "a character a person owns is a player, though the seat holds their user id" do
+      stub(BotArmyRpg.CharacterStoreMock, :get, fn _tenant, @character ->
+        {:ok, %{"id" => @character, "user_id" => @user, "name" => "Default User"}}
+      end)
+
+      actor = whose_with_turn_order([@character])
+
+      assert actor["character_id"] == @character
+      assert actor["type"] == "player"
+    end
+
+    test "a character no person owns is a bot" do
+      stub(BotArmyRpg.CharacterStoreMock, :get, fn _tenant, @character ->
+        {:ok, %{"id" => @character, "bot_id" => "companion_bot"}}
+      end)
+
+      assert whose_with_turn_order([@character])["type"] == "bot"
+    end
+
+    test "a character that cannot be read is never auto-played" do
+      stub(BotArmyRpg.CharacterStoreMock, :get, fn _tenant, _character ->
+        {:error, :not_found}
+      end)
+
+      assert whose_with_turn_order([@character])["type"] == "player"
     end
   end
 

@@ -464,6 +464,19 @@ The session is re-read at each hop rather than carried forward: the bot that jus
 wrote its turn into `turn_history` (`apply_resolution/8`), and advancing from a stale copy
 handed the table a turn state with that record missing.
 
+**Who plays a seat is a lookup, not a guess.** `character_ids` records *who plays* each
+character in one slot — a user id for a person, a bot id for a bot — and both are just
+binaries, so `TurnManager.current_actor/1` read every seat as a bot's. Measured on the live
+bot 2026-10-26: her own seat carried `"00000000-0000-0000-0000-000000000002"`, and the
+engine played `"Default User strikes at the enemy"` *for her*. A table where every seat is a
+bot's has no turn a person can take, which is the other half of "no one's turn".
+
+`GMHandler.kind_of/2` decides the kind from the character store (`user_id` set → player,
+otherwise bot) and is the only place that decides it; a character that cannot be read is a
+player, because putting words in somebody's mouth is worse than a turn that waits. The
+same ambiguity is still in `PartyChat.members_of/1`, which carries the seat value as a
+`bot_id` for the chat ask — an ask to a uuid names no bot and goes unanswered.
+
 **The turn carries an id, not a name.** `TurnManager.current_actor/1` answers
 `character_id`, `bot_id` and `type`; it holds a session and not a roster, so it cannot name
 anyone. A surface that draws "whose turn" resolves the name from the roster it already read
