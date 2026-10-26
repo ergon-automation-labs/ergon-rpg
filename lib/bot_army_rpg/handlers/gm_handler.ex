@@ -37,7 +37,14 @@ defmodule BotArmyRpg.Handlers.GMHandler do
         {:ok, updated} ->
           actor = TurnManager.current_actor(updated)
           publish_turn_started(updated, actor, tenant_id)
-          {:ok, %{"session" => updated, "current_actor" => actor}}
+
+          # Opening the table on a companion's turn is not a table waiting for a player:
+          # nobody can press for a bot, so the round would sit there. The same chain a
+          # `rpg.turn.next` uses plays the bot and hands the turn on, so starting a round
+          # and asking for the next turn answer the same question — who moves now.
+          bot_result = maybe_enqueue_bot_autoplay(actor, updated, tenant_id, session_id)
+
+          {:ok, %{"session" => updated, "current_actor" => actor, "bot_action" => bot_result}}
 
         {:error, reason} ->
           {:error, reason}
@@ -450,6 +457,7 @@ defmodule BotArmyRpg.Handlers.GMHandler do
     # Do not block rpg.turn.next request/reply on autoplay + narration.
     Task.start(fn ->
       _ = maybe_bot_autoplay(actor, session, tenant_id, session_id)
+      pass_the_turn(session_id, tenant_id, 1)
     end)
 
     %{
@@ -461,6 +469,50 @@ defmodule BotArmyRpg.Handlers.GMHandler do
   end
 
   defp maybe_enqueue_bot_autoplay(_, _, _, _), do: nil
+
+  # A turn that lands on a bot is taken by the bot, and then the table moves on. Nobody
+  # can press for a companion, so "the next turn" means the next turn somebody can take:
+  # each bot actor met is played and passed over, and the chain stops on a player's turn.
+  #
+  # The invariant is that the marker points at the actor who moves *next*. So each hop
+  # advances first, then plays whatever it landed on while the party still has turns to
+  # give (`plays < party_size`), and stops once the round's worth of bots have acted —
+  # leaving the marker on a new round rather than on a turn already taken. That bound is
+  # what keeps a table of bots only from spinning.
+  #
+  # The session is re-read at each hop rather than carried: the bot that just acted wrote
+  # its turn into `turn_history` (`apply_resolution`), and advancing from a stale copy
+  # would hand the table a turn state with that record missing.
+  defp pass_the_turn(session_id, tenant_id, plays) do
+    with {:ok, session} <- session_store().get(tenant_id, session_id),
+         {:ok, updated} <-
+           session_store().update(tenant_id, session_id, %{
+             "metadata" => TurnManager.advance_turn(session)
+           }),
+         actor when is_map(actor) <- TurnManager.current_actor(updated) do
+      publish_turn_started(updated, actor, tenant_id)
+
+      if actor["type"] == "bot" and plays < party_size(updated) do
+        _ = maybe_bot_autoplay(actor, updated, tenant_id, session_id)
+        pass_the_turn(session_id, tenant_id, plays + 1)
+      end
+    else
+      {:error, reason} ->
+        Logger.warning("[GM] The turn was not passed on: #{inspect(reason)}")
+
+      _actor ->
+        :ok
+    end
+  end
+
+  defp party_size(session) do
+    session
+    |> get_in(["metadata", "turn_state", "turn_order"])
+    |> case do
+      order when is_list(order) -> max(length(order), 1)
+      _ -> 1
+    end
+  end
 
   defp resolve_tenant_id(params, message) do
     params["tenant_id"] || message["tenant_id"] ||

@@ -436,6 +436,41 @@ something writes a fact in her name — which is why the narration *is* the turn
 is written as one fact, `category: "narration"`, by `GM.Narrator` (with no narrator) or by
 the narrator's own bot (with one — see *The ask*).
 
+## A turn that lands on a companion is taken by the companion
+
+Turn order is the party's ids, sorted (`TurnManager.build_turn_state/1`), so the seat a
+round opens on is whichever id sorts first — usually a companion, often `companion_bot`.
+That is fine in itself; what was not fine is that nothing took the turn. `rpg.turn.next`
+played a bot and then left the marker on it, and `rpg.turn.start_round` did not play it at
+all, so opening the table seated a bot, wrote no fact, and waited for a press that no one
+can make for a bot. Measured on the live bot 2026-10-26: `start_round` answered
+`{"current_actor": {"bot_id": "companion_bot", …}, "active_index": 0}` and
+`rpg.scene.fact.list` stayed `[]`.
+
+A request for "the next turn" now means **the next turn somebody can take**. The engine
+advances, and each bot it lands on is played (`BotPlayer.decide_action/4`, then
+declare → resolve) and passed over, until the turn reaches a player. Two things follow
+from that rule:
+
+- **`rpg.turn.start_round` answers like `rpg.turn.next`** — `"bot_action"` is set when the
+  first seat is a bot's, and the chain runs in a `Task`, because narrating a turn is an
+  LLM call and the request/reply must not wait for it.
+- **The chain is bounded by the party's size** (`plays < party_size/1`) and the marker
+  always points at the actor who moves *next*: after a round's worth of bots have acted,
+  the turn sits on a fresh round rather than on a turn already taken. A table of bots only
+  therefore plays one round and stops instead of spinning.
+
+The session is re-read at each hop rather than carried forward: the bot that just acted
+wrote its turn into `turn_history` (`apply_resolution/8`), and advancing from a stale copy
+handed the table a turn state with that record missing.
+
+**The turn carries an id, not a name.** `TurnManager.current_actor/1` answers
+`character_id`, `bot_id` and `type`; it holds a session and not a roster, so it cannot name
+anyone. A surface that draws "whose turn" resolves the name from the roster it already read
+(`rpg.character.list`) rather than expecting one on the wire — the global surface does this
+in `Areas.rpg_turn/2`. Reading the turn as nameless is what made the page say "nobody's turn
+yet" over a turn that was really somebody's.
+
 ## Whose name is on the words
 
 The signer is the generator. The window draws `source` as the speaker (`party_window.ex` →
