@@ -14,7 +14,15 @@ defmodule BotArmyRpg.GM.Narrator do
 
   alias BotArmyRpg.Themes.Archetype
 
-  @llm_timeout_ms 3000
+  # How long a model may take before its answer is declared missing. Three seconds was a
+  # deadline the model never met: the real scene prompt (theme + vocabulary + the table's
+  # facts) measured 7.5 s once and 31.6 s once on 2026-10-26, and the runtime's circuit
+  # breaker answers the *first* timeout with a 60 s cooldown — so one slow answer turned
+  # the whole next minute into template prose. A local model is not late at three
+  # seconds; it is just still writing. `rpg.scene.narrate` now accepts "async": true so
+  # the caller that must not wait (a LiveView) can be answered at once and read the prose
+  # back; this ceiling is only the point at which a *prompt* is declared unanswered.
+  @llm_timeout_ms 180_000
   @circuit_breaker_key "rpg:gm:llm.narrate"
 
   @doc """

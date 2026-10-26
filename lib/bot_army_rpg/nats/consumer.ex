@@ -262,7 +262,12 @@ defmodule BotArmyRpg.NATS.Consumer do
     %{
       subject: "rpg.scene.narrate",
       type: :request_reply,
-      description: "Generate GM narration for a scene"
+      description: "Generate GM narration for a scene (async: true answers at once)"
+    },
+    %{
+      subject: "rpg.scene.narration.get",
+      type: :request_reply,
+      description: "Read back the last scene narration the GM wrote for a table"
     },
     %{
       subject: "rpg.narrative.daily",
@@ -544,6 +549,9 @@ defmodule BotArmyRpg.NATS.Consumer do
 
       "rpg.scene.narrate" ->
         GMHandler.handle_scene_narrate(body)
+
+      "rpg.scene.narration.get" ->
+        GMHandler.handle_scene_narration_get(body)
 
       "rpg.quest.create" ->
         QuestHandler.handle_create(body)

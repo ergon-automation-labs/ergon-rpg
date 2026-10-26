@@ -175,43 +175,152 @@ defmodule BotArmyRpg.Handlers.GMHandler do
     end
   end
 
+  # A scene narration is a model round trip, and a local model is not late at three
+  # seconds: the *real* prompt (theme + vocabulary + the session's facts) measured 7.5 s
+  # once and 31.6 s once on 2026-10-26, against a 3 s deadline. The deadline was a lie
+  # about the model with an expensive failure mode — the runtime's circuit breaker puts a
+  # key in a 60 s cooldown on the *first* timeout, so one slow answer turned every
+  # narration in the following minute into the template. Measured: mini logged
+  # `rpg:gm:llm.narrate: timeout, cooldown 60000ms` and the page drew "You find yourself
+  # in Docs.2 — Write the pattern…" — a quest title narrated as if it were a place.
+  #
+  # Two shapes, and the caller *declares* which one it can hold — the fleet's own idiom
+  # (`llm.request.chat` with `"async": true`):
+  #
+  #   * `"async": true` -> an acceptance, at once. The prose is written down under the
+  #     session's `metadata.narration` as it arrives and read back with
+  #     `rpg.scene.narration.get`. This is what the page asks, because a LiveView must
+  #     not hold a socket open for half a minute to keep a press alive.
+  #   * no flag -> wait for the answer, with a timeout that lets the model speak.
   def handle_scene_narrate(message) do
     params = message["payload"] || message
     tenant_id = resolve_tenant_id(params, message)
     session_id = params["session_id"]
 
     with {:ok, session} <- session_store().get(tenant_id, session_id),
-         :ok <- require_session_active(session),
-         {:ok, theme} <- theme_store().get_current(tenant_id),
-         {:ok, facts} <- scene_fact_store().list_for_session(tenant_id, session_id) do
+         :ok <- require_session_active(session) do
       scene = params["scene_description"] || session["scene_description"]
+      asked_at = now_iso()
 
-      case Narrator.narrate_scene(scene, theme, facts) do
-        {:ok, narration} ->
-          BotArmyRpg.NATS.Publisher.publish(
-            "rpg.scene.narrated",
-            %{
-              "session_id" => session_id,
-              "scene_description" => scene,
-              "narration" => narration
-            },
-            tenant_id: tenant_id
-          )
+      # Written down before the model is asked, so a read that arrives while it is still
+      # thinking is told "writing", never "nothing" — an empty answer and a pending one
+      # are different facts.
+      record_narration(tenant_id, session_id, %{
+        "status" => "writing",
+        "scene_description" => scene,
+        "asked_at" => asked_at,
+        "narration" => nil
+      })
 
-          {:ok,
-           %{
-             "session_id" => session_id,
-             "scene_description" => scene,
-             "narration" => narration
-           }}
+      if async_requested?(params) do
+        Task.start(fn -> narrate_and_record(tenant_id, session_id, scene, asked_at) end)
 
-        {:error, reason} ->
-          {:error, reason}
+        {:ok, %{"session_id" => session_id, "pending" => true, "asked_at" => asked_at}}
+      else
+        case narrate_and_record(tenant_id, session_id, scene, asked_at) do
+          {:ok, narration} ->
+            {:ok,
+             %{
+               "session_id" => session_id,
+               "scene_description" => scene,
+               "narration" => narration
+             }}
+
+          {:error, reason} ->
+            {:error, reason}
+        end
       end
     end
   end
 
+  @doc """
+  Answers the last scene narration the GM wrote for a table.
+
+  `"status"` is `"writing"` while the model is still thinking, `"ready"` when the prose
+  is there, `"failed"` when it refused or errored, and `"none"` when no scene has been
+  narrated on this table yet. The three non-empty states are what let a page draw
+  "the GM is writing" instead of an empty card, and say a failure out loud instead of
+  waiting forever.
+  """
+  def handle_scene_narration_get(message) do
+    params = message["payload"] || message
+    tenant_id = resolve_tenant_id(params, message)
+    session_id = params["session_id"]
+
+    with {:ok, session} <- session_store().get(tenant_id, session_id) do
+      recorded = get_in(session, ["metadata", "narration"]) || %{}
+
+      {:ok,
+       %{
+         "session_id" => session_id,
+         "status" => recorded["status"] || "none",
+         "narration" => recorded["narration"],
+         "scene_description" => recorded["scene_description"],
+         "asked_at" => recorded["asked_at"],
+         "ready_at" => recorded["ready_at"],
+         "error" => recorded["error"]
+       }}
+    end
+  end
+
   # --- Private ---
+
+  # Both shapes of `rpg.scene.narrate` end here: the same work, the same record. Awaited
+  # and backgrounded differ only in who waits.
+  defp narrate_and_record(tenant_id, session_id, scene, asked_at) do
+    with {:ok, theme} <- theme_store().get_current(tenant_id),
+         {:ok, facts} <- scene_fact_store().list_for_session(tenant_id, session_id),
+         {:ok, narration} <- Narrator.narrate_scene(scene, theme, facts) do
+      record_narration(tenant_id, session_id, %{
+        "status" => "ready",
+        "scene_description" => scene,
+        "asked_at" => asked_at,
+        "ready_at" => now_iso(),
+        "narration" => narration
+      })
+
+      BotArmyRpg.NATS.Publisher.publish(
+        "rpg.scene.narrated",
+        %{
+          "session_id" => session_id,
+          "scene_description" => scene,
+          "narration" => narration
+        },
+        tenant_id: tenant_id
+      )
+
+      {:ok, narration}
+    else
+      {:error, reason} ->
+        record_narration(tenant_id, session_id, %{
+          "status" => "failed",
+          "scene_description" => scene,
+          "asked_at" => asked_at,
+          "ready_at" => now_iso(),
+          "narration" => nil,
+          "error" => describe_error(reason)
+        })
+
+        {:error, reason}
+    end
+  end
+
+  # Re-read then merge: the table's metadata also carries the turn, and a narration must
+  # not be the thing that forgets whose turn it is.
+  defp record_narration(tenant_id, session_id, narration) do
+    with {:ok, session} <- session_store().get(tenant_id, session_id) do
+      metadata = Map.put(session["metadata"] || %{}, "narration", narration)
+      session_store().update(tenant_id, session_id, %{"metadata" => metadata})
+    end
+  end
+
+  defp async_requested?(params), do: Map.get(params, "async") in [true, "true"]
+
+  defp describe_error(reason) when is_binary(reason), do: reason
+  defp describe_error(reason) when is_atom(reason), do: Atom.to_string(reason)
+  defp describe_error(reason), do: inspect(reason)
+
+  defp now_iso, do: DateTime.utc_now() |> DateTime.to_iso8601()
 
   defp apply_resolution(
          tenant_id,

@@ -36,6 +36,7 @@ defmodule BotArmyRpg.NATS.ConsumerSubjectsTest do
     rpg.scene.fact.add
     rpg.scene.fact.list
     rpg.scene.narrate
+    rpg.scene.narration.get
     rpg.session.gather_context
     rpg.session.join
     rpg.session.leave
