@@ -32,6 +32,22 @@ defmodule BotArmyRpg.GM.NarratorTest do
     def publish(_subject, _payload, _opts), do: :ok
   end
 
+  defmodule EchoingPublisher do
+    @moduledoc """
+    Hands the prompt back as the completion.
+
+    The narrator passes any non-empty completion straight through, so the returned
+    "narration" IS the prompt — which lets a test read what the GM was told without
+    a side channel, a named process, or a second assertion target.
+    """
+    def request("llm.prompt.submit", %{"text" => text}, _opts),
+      do: {:ok, %{"completion" => text}}
+
+    def request(_subject, _payload, _opts), do: {:error, :unavailable}
+    def publish(_subject, _payload), do: :ok
+    def publish(_subject, _payload, _opts), do: :ok
+  end
+
   setup do
     Application.put_env(:bot_army_rpg, :nats_publisher, StubPublisher)
 
@@ -40,6 +56,78 @@ defmodule BotArmyRpg.GM.NarratorTest do
     end)
 
     :ok
+  end
+
+  describe "narrate_scene/3 — the facts in the prompt" do
+    # Measured 2026-10-26: the wife-care panel's "Have the GM narrate the quest"
+    # answered `:handler_crashed` — `protocol String.Chars not implemented for
+    # %{"category" => "narration", "content" => …}` — because the prompt builder
+    # `Enum.join`ed fact ROWS. Any table with one fact in it could not be narrated,
+    # and the page (which had no clause for a refusal) reset to the world picker.
+    # There was no test for narrate_scene/3 at all; these are it.
+    test "a fact row reaches the prompt as its sentence, not as Elixir map syntax" do
+      Application.put_env(:bot_army_rpg, :nats_publisher, EchoingPublisher)
+
+      facts = [
+        %{
+          "id" => "1dc5da32",
+          "category" => "narration",
+          "content" => "Companion Bot strikes at the enemy.",
+          "source" => "gm"
+        }
+      ]
+
+      assert {:ok, prompt} =
+               Narrator.narrate_scene("The ruined hall", IronKingdoms.theme(), facts)
+
+      assert prompt =~ "You are the Game Master narrating a scene"
+      assert prompt =~ "Scene: The ruined hall"
+      assert prompt =~ "Recent events:"
+      assert prompt =~ "Companion Bot strikes at the enemy."
+      refute prompt =~ "%{"
+      refute prompt =~ "category"
+    end
+
+    test "a plain string fact is prose already and is kept as written" do
+      Application.put_env(:bot_army_rpg, :nats_publisher, EchoingPublisher)
+
+      assert {:ok, prompt} =
+               Narrator.narrate_scene("A door", IronKingdoms.theme(), ["A door closes."])
+
+      assert prompt =~ "A door closes."
+      refute prompt =~ "%{"
+    end
+
+    test "a fact the prompt cannot read as prose is left out, not inspected in" do
+      Application.put_env(:bot_army_rpg, :nats_publisher, EchoingPublisher)
+
+      facts = [%{"category" => "narration"}, 42, "The torch gutter."]
+
+      assert {:ok, prompt} = Narrator.narrate_scene("The hall", IronKingdoms.theme(), facts)
+
+      assert prompt =~ "The torch gutter."
+      refute prompt =~ "%{"
+      refute prompt =~ "42"
+    end
+
+    test "an empty table says nothing about recent events" do
+      Application.put_env(:bot_army_rpg, :nats_publisher, EchoingPublisher)
+
+      for facts <- [[], nil] do
+        assert {:ok, prompt} = Narrator.narrate_scene("The hall", IronKingdoms.theme(), facts)
+        refute prompt =~ "Recent events"
+      end
+    end
+
+    test "a session with facts still narrates when the LLM is unavailable" do
+      facts = [%{"category" => "narration", "content" => "Companion Bot strikes at the enemy."}]
+
+      assert {:ok, narration} =
+               Narrator.narrate_scene("The ruined hall", IronKingdoms.theme(), facts)
+
+      assert is_binary(narration)
+      assert narration =~ "The ruined hall"
+    end
   end
 
   describe "narrate_action/4 fallback prose" do

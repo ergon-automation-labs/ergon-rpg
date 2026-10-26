@@ -208,17 +208,31 @@ defmodule BotArmyRpg.Handlers.TurnPassingTest do
 
     assert {:ok, _} = GMHandler.handle_turn_start_round(payload())
 
+    # Waiting for the round to *finish*, not for its first turn to land. The chain plays
+    # each bot seat in turn and every play narrates through the LLM, so a round of two
+    # bots takes seconds, not milliseconds — and `turn_history` is written before the
+    # narration that follows it, so both the records and the facts are waited for.
+    #
+    # This predicate used to be `active_index == 0 and length(turn_history) >= 1`, which
+    # settled after the *first* bot: the test then asserted for two records and raced a
+    # turn that had not happened yet, or asserted for two facts and lost the second
+    # narration. Measured 2026-10-26 on 0.15.66 (the tree before this change): 1–2
+    # failures in 3 runs of this file. The bot was right; the wait was too short.
     session =
-      settle(fn ->
-        state = turn_state(SessionStore.state())
-        # A round is over when the turn is back at the first seat with the party's turns
-        # written down: the chain is bounded by the party's size, so it stops here.
-        if state["active_index"] == 0 and length(state["turn_history"] || []) >= 1 do
-          {:settled, SessionStore.state()}
-        else
-          :waiting
-        end
-      end)
+      settle(
+        fn ->
+          state = turn_state(SessionStore.state())
+          facts = length(SceneFactStore.facts())
+
+          if state["active_index"] == 0 and length(state["turn_history"] || []) >= 2 and
+               facts >= 2 do
+            {:settled, SessionStore.state()}
+          else
+            :waiting
+          end
+        end,
+        400
+      )
 
     state = turn_state(session)
     assert Enum.map(state["turn_history"], & &1["character_id"]) == [@other_bot, @companion]

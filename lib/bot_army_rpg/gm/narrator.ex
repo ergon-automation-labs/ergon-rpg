@@ -52,16 +52,40 @@ defmodule BotArmyRpg.GM.Narrator do
 
   # --- Prompt builders ---
 
+  # A fact is a ROW (a map with `content`, `category`, `source`, …), and the prompt
+  # wants the sentence inside it. `Enum.join(facts, "\n")` reads as prose and isn't:
+  # it demands `String.Chars` of a map and *raises* out of the handler. Measured
+  # 2026-10-26 — the wife-care panel's "Have the GM narrate the quest" answered
+  # `:handler_crashed` with `protocol String.Chars not implemented for
+  # %{"category" => "narration", "content" => "Companion Bot strikes at the enemy…"}`
+  # whenever the session had a single fact in it, so a table with any history could
+  # not be narrated at all. Prose in, prose out: a row we cannot read as prose is
+  # left out rather than inspected into the prompt.
+  defp fact_lines(nil), do: []
+
+  defp fact_lines(facts) when is_list(facts) do
+    facts
+    |> Enum.map(&fact_line/1)
+    |> Enum.reject(&(&1 == ""))
+  end
+
+  defp fact_lines(_other), do: []
+
+  defp fact_line(fact) when is_binary(fact), do: String.trim(fact)
+
+  defp fact_line(%{"content" => content}) when is_binary(content), do: String.trim(content)
+  defp fact_line(%{content: content}) when is_binary(content), do: String.trim(content)
+  defp fact_line(_other), do: ""
+
   defp build_scene_prompt(scene_description, theme, recent_facts) do
     setting = theme["setting"] || "unknown realm"
     tone = theme["tone"] || "neutral"
     vocab = theme["vocabulary"] || %{}
 
     facts_text =
-      if recent_facts in [nil, []] do
-        ""
-      else
-        "Recent events:\n" <> Enum.join(recent_facts, "\n")
+      case fact_lines(recent_facts) do
+        [] -> ""
+        lines -> "Recent events:\n" <> Enum.join(lines, "\n")
       end
 
     vocab_text =
