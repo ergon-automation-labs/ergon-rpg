@@ -12,6 +12,26 @@ defmodule BotArmyRpg.GM.NarratorTest do
     def publish(_subject, _payload, _opts), do: :ok
   end
 
+  defmodule SpeakingPublisher do
+    @moduledoc false
+    # The bot's real shape: the completion, unwrapped, under `"completion"`.
+    def request("llm.prompt.submit", %{"text" => text}, _opts) when is_binary(text),
+      do: {:ok, %{"completion" => "The GM's own words.", "model" => "stub"}}
+
+    def request(_subject, _payload, _opts), do: {:error, :unavailable}
+    def publish(_subject, _payload), do: :ok
+    def publish(_subject, _payload, _opts), do: :ok
+  end
+
+  defmodule RefusingPublisher do
+    @moduledoc false
+    def request(_subject, _payload, _opts),
+      do: {:ok, %{"error" => ":empty_prompt", "prompt_id" => "226e8fbb"}}
+
+    def publish(_subject, _payload), do: :ok
+    def publish(_subject, _payload, _opts), do: :ok
+  end
+
   setup do
     Application.put_env(:bot_army_rpg, :nats_publisher, StubPublisher)
 
@@ -71,6 +91,37 @@ defmodule BotArmyRpg.GM.NarratorTest do
         assert narration =~ "the Iosan Envoy", "outcome=#{outcome}: missing themed label"
         assert narration =~ marker, "outcome=#{outcome}: missing marker #{inspect(marker)}"
       end
+    end
+  end
+
+  describe "the LLM call" do
+    test "the prompt is sent in the field the bot reads, and the prose is its answer" do
+      Application.put_env(:bot_army_rpg, :nats_publisher, SpeakingPublisher)
+
+      assert {:ok, "The GM's own words."} =
+               Narrator.narrate_action(
+                 %{"action_type" => "attack", "description" => "She strikes."},
+                 %{"outcome" => "success"},
+                 IronKingdoms.theme()
+               )
+    end
+
+    test "an answer that is not prose is a failure, never narration" do
+      # Measured live 2026-10-26: the fact written for a turn was
+      # `%{"error" => ":empty_prompt", "prompt_id" => …}` — the refusal, inspected, dressed
+      # as the GM's prose. The template speaks instead.
+      Application.put_env(:bot_army_rpg, :nats_publisher, RefusingPublisher)
+
+      assert {:ok, narration} =
+               Narrator.narrate_action(
+                 %{"action_type" => "attack", "description" => "She strikes."},
+                 %{"outcome" => "success"},
+                 IronKingdoms.theme()
+               )
+
+      refute narration =~ "error"
+      refute narration =~ "prompt_id"
+      assert narration =~ "She strikes."
     end
   end
 end

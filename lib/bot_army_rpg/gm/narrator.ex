@@ -123,18 +123,31 @@ defmodule BotArmyRpg.GM.Narrator do
 
   # --- LLM call ---
 
+  # `llm.prompt.submit` reads the prompt from `"text"` and answers the completion under
+  # `"completion"`, unwrapped. This sent `%{"prompt" => …}` and read `data["text"] ||
+  # data["response"] || inspect(data)`, so every narration the fleet ever produced was the
+  # *inspection of the refusal*: measured 2026-10-26, a turn's fact read
+  # `%{"error" => ":empty_prompt", "prompt_id" => "226e8fbb-…"}` — the bot said the prompt
+  # was empty because it looked in a field nobody wrote, and rpg wrote that sentence into
+  # her chronicle as prose. An answer that is not prose is a failure, never narration: the
+  # template speaks instead.
   defp call_llm(prompt_text) do
-    payload = %{"prompt" => prompt_text}
+    payload = %{"text" => prompt_text}
 
     case publisher().request("llm.prompt.submit", payload,
            timeout_ms: @llm_timeout_ms,
            circuit_breaker_key: @circuit_breaker_key
          ) do
-      {:ok, %{"data" => data}} ->
-        {:ok, data["text"] || data["response"] || inspect(data)}
+      {:ok, %{"completion" => text}} when is_binary(text) and text != "" ->
+        {:ok, text}
+
+      {:ok, %{"error" => reason}} ->
+        Logger.warning("[GM.Narrator] The LLM refused the prompt: #{inspect(reason)}")
+        {:error, {:llm_error, reason}}
 
       {:ok, other} ->
-        {:ok, inspect(other)}
+        Logger.warning("[GM.Narrator] The LLM's answer was not prose: #{inspect(other)}")
+        {:error, :unreadable_reply}
 
       {:error, reason} ->
         Logger.warning("[GM.Narrator] LLM narration failed: #{inspect(reason)}")

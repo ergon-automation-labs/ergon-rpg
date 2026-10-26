@@ -484,6 +484,31 @@ anyone. A surface that draws "whose turn" resolves the name from the roster it a
 in `Areas.rpg_turn/2`. Reading the turn as nameless is what made the page say "nobody's turn
 yet" over a turn that was really somebody's.
 
+## The GM's prose is the LLM's answer, in the field it answers under
+
+`Narrator.call_llm/1` asked `llm.prompt.submit` with `%{"prompt" => text}` and read its
+answer as `data["text"] || data["response"] || inspect(data)`. The bot reads the prompt
+from **`"text"`** and answers the prose under **`"completion"`**, unwrapped — so the prompt
+arrived empty and the reply arrived as a refusal, which `inspect/1` turned into prose.
+Measured on the live bot 2026-10-26, the fact written for a played turn was exactly:
+
+```
+gm | narration | %{"error" => ":empty_prompt", "prompt_id" => "226e8fbb-…"}
+```
+
+The chronicle said the machine could not read its own prompt, in the GM's voice. The call
+now sends `"text"` and reads `"completion"`; a refusal or an unreadable answer is a
+*failure*, so the themed template speaks instead. Both are covered in
+`test/bot_army_rpg/gm/narrator_test.exs`.
+
+**A party narrator is a door nothing answers yet.** `PartyNarration.ask/4` publishes on
+`rpg.narration.your_turn` and no bot in the fleet subscribes to it (measured with `connz`
+2026-10-26: rpg subscribes to `events.rpg.narration.your_turn`, the *result*, and nobody to
+the ask). So a party with a narrator writes no words for its turns at all. The role is
+still the right shape — a narrator's prose should be hers — but until something answers,
+the honest arrangement is no narrator: the GM narrates. Her party's narrator role was
+cleared for that reason, not because the role is wrong.
+
 ## Whose name is on the words
 
 The signer is the generator. The window draws `source` as the speaker (`party_window.ex` →
