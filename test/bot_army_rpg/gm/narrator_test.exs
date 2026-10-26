@@ -119,14 +119,41 @@ defmodule BotArmyRpg.GM.NarratorTest do
       end
     end
 
-    test "a session with facts still narrates when the LLM is unavailable" do
+    # What this used to assert was the crash's *replacement*: rows were `Enum.join`ed, the
+    # handler raised, and the fix was a template that spoke when the model could not. The
+    # template interpolated the scene description — which on a real table is a GTD task
+    # title — so the fix was honest about not crashing and dishonest about what the GM
+    # said. A table with facts and no model is a *failure the caller is told about*.
+    test "a session with facts is asked, and a missing model is a failure not a template" do
       facts = [%{"category" => "narration", "content" => "Companion Bot strikes at the enemy."}]
 
-      assert {:ok, narration} =
+      assert {:error, :unavailable} =
                Narrator.narrate_scene("The ruined hall", IronKingdoms.theme(), facts)
+    end
+  end
 
-      assert is_binary(narration)
-      assert narration =~ "The ruined hall"
+  describe "narrate_scene/3 — a model that does not answer" do
+    # The old shape answered with a template: "You find yourself in <the quest's title>.
+    # The air of <setting> feels <tone>." With the LLM bot degraded to
+    # `:no_providers_available` (measured on mini 2026-10-26 15:52 MDT) that painted a GTD
+    # task title as a place the GM had described, and the page had no way to tell it apart
+    # from prose. A scene is the model's words or it is a failure; the caller says which.
+    test "a refusal is a failure, not a scene the GM never described" do
+      Application.put_env(:bot_army_rpg, :nats_publisher, RefusingPublisher)
+
+      assert {:error, {:llm_error, ":empty_prompt"}} =
+               Narrator.narrate_scene(
+                 "Docs.2 — Write the pattern and the rule in docs/technical/ERROR_MESSAGE_PATTERN.md",
+                 IronKingdoms.theme(),
+                 []
+               )
+    end
+
+    test "an unreachable model is a failure too" do
+      Application.put_env(:bot_army_rpg, :nats_publisher, StubPublisher)
+
+      assert {:error, :unavailable} =
+               Narrator.narrate_scene("The ruined hall", IronKingdoms.theme(), [])
     end
   end
 

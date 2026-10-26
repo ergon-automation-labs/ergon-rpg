@@ -316,8 +316,16 @@ defmodule BotArmyRpg.Handlers.GMHandler do
 
   defp async_requested?(params), do: Map.get(params, "async") in [true, "true"]
 
-  defp describe_error(reason) when is_binary(reason), do: reason
-  defp describe_error(reason) when is_atom(reason), do: Atom.to_string(reason)
+  # The reason is read by a person: the page prints "The GM could not write the scene: "
+  # and then this. `inspect/1` put `{:llm_error, ":no_providers_available"}` on her card.
+  defp describe_error({:llm_error, reason}), do: "the model refused: " <> describe_error(reason)
+
+  defp describe_error(reason) when is_binary(reason),
+    do: reason |> String.trim_leading(":") |> String.replace("_", " ")
+
+  defp describe_error(reason) when is_atom(reason),
+    do: reason |> Atom.to_string() |> String.replace("_", " ")
+
   defp describe_error(reason), do: inspect(reason)
 
   defp now_iso, do: DateTime.utc_now() |> DateTime.to_iso8601()

@@ -2,7 +2,13 @@ defmodule BotArmyRpg.GM.Narrator do
   @moduledoc """
   Builds prompts and calls the LLM bot for GM narration.
 
-  Falls back to template-based narration if the LLM is unavailable.
+  Action beats fall back to a sentence derived from the resolution — the bot knows what
+  the roll was, so that sentence is a *report*, not an invention. A **scene** does not
+  fall back at all: the template that used to speak here interpolated the quest's title,
+  so a model that was down got painted as the GM saying "You find yourself in Docs.2 —
+  Write the pattern and the rule in docs/technical/ERROR_MESSAGE_PATTERN.md." Measured
+  2026-10-26 15:52 MDT on mini, with the LLM bot degraded to `:no_providers_available`.
+  A model that does not answer is not a scene, and the caller is told so.
 
   When the current theme reskins a bot's archetype (see
   `BotArmyRpg.Themes.Archetype`), the actor's themed identity is woven into
@@ -31,12 +37,7 @@ defmodule BotArmyRpg.GM.Narrator do
   Returns `{:ok, String.t()}` or `{:error, reason}`.
   """
   def narrate_scene(scene_description, theme, recent_facts) do
-    prompt = build_scene_prompt(scene_description, theme, recent_facts)
-
-    case call_llm(prompt) do
-      {:ok, text} -> {:ok, text}
-      {:error, _} -> {:ok, fallback_scene(scene_description, theme)}
-    end
+    call_llm(build_scene_prompt(scene_description, theme, recent_facts))
   end
 
   @doc """
@@ -192,15 +193,6 @@ defmodule BotArmyRpg.GM.Narrator do
   end
 
   # --- Fallbacks ---
-
-  defp fallback_scene(scene_description, theme) do
-    setting = theme["setting"] || "this realm"
-    tone = theme["tone"] || ""
-
-    desc = scene_description || "An unremarkable location"
-
-    "You find yourself in #{desc}. The air of #{setting} feels #{tone || "heavy"}."
-  end
 
   defp fallback_action(action, resolution, theme, archetype, character) do
     vocab = theme["vocabulary"] || %{}

@@ -202,7 +202,7 @@ defmodule BotArmyRpg.Handlers.SceneNarrationAsyncTest do
       assert {:ok, %{"pending" => true}} =
                GMHandler.handle_scene_narrate(payload(%{"async" => true}))
 
-      assert %{"status" => "failed", "error" => "not_found", "narration" => nil} =
+      assert %{"status" => "failed", "error" => "not found", "narration" => nil} =
                assert_settled()
     end
   end
