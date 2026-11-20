@@ -90,11 +90,12 @@ defmodule BotArmyRpg.Themes.Archetype do
   def prompt_hint({:themed, persona}) do
     title = persona["title"] || "Unknown"
     demeanor = persona["demeanor"]
+    actor = hinted_actor(persona["name"])
 
     if is_binary(demeanor) and demeanor != "" do
-      "The actor presents as a #{title} — #{demeanor}."
+      "#{actor} presents as a #{title} — #{demeanor}."
     else
-      "The actor presents as a #{title}."
+      "#{actor} presents as a #{title}."
     end
   end
 
@@ -103,6 +104,9 @@ defmodule BotArmyRpg.Themes.Archetype do
   end
 
   def prompt_hint(_), do: ""
+
+  defp hinted_actor(name) when is_binary(name) and name != "", do: name
+  defp hinted_actor(_name), do: "The actor"
 
   @doc """
   Render a short narrative label for fallback prose (no LLM available).

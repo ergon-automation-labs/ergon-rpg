@@ -158,7 +158,7 @@ defmodule BotArmyRpg.GM.NarratorTest do
   end
 
   describe "narrate_action/4 fallback prose" do
-    test "uses the themed persona title when the theme reskins the bot" do
+    test "uses the themed persona's name when the theme reskins the bot" do
       theme = IronKingdoms.theme()
       character = %{"bot_id" => "gtd", "name" => "Gtd"}
       action = %{"action_type" => "attack", "description" => "Gtd strikes at the enemy."}
@@ -166,7 +166,8 @@ defmodule BotArmyRpg.GM.NarratorTest do
 
       assert {:ok, narration} = Narrator.narrate_action(action, resolution, theme, character)
 
-      assert narration =~ "the Gobber Tinker"
+      assert narration =~ "Sprix"
+      refute narration =~ "Gobber Tinker"
       assert narration =~ "barrage"
     end
 
@@ -203,7 +204,7 @@ defmodule BotArmyRpg.GM.NarratorTest do
         resolution = %{"outcome" => outcome, "total" => 14, "dc" => 12}
 
         assert {:ok, narration} = Narrator.narrate_action(action, resolution, theme, character)
-        assert narration =~ "the Iosan Envoy", "outcome=#{outcome}: missing themed label"
+        assert narration =~ "Aelindra of House Shyeel", "outcome=#{outcome}: missing persona name"
         assert narration =~ marker, "outcome=#{outcome}: missing marker #{inspect(marker)}"
       end
     end
@@ -252,6 +253,35 @@ defmodule BotArmyRpg.GM.NarratorTest do
       line = neon_line("hack (breach corporate systems or ICE)", "failure", "Mara Voss")
       assert String.starts_with?(line, "Mara Voss tries to hack")
       refute line =~ "acts."
+    end
+
+    test "a persona with a name is called by it, never by its title or the sheet's name" do
+      theme = %{
+        "vocabulary" => %{},
+        "npc_personas" => %{
+          "fixer" => %{"name" => "Mara Voss", "title" => "Fixer", "bot_assignments" => ["gtd"]}
+        }
+      }
+
+      character = %{"bot_id" => "gtd_bot", "name" => "The Lorekeeper"}
+      action = %{"action_type" => "hack (breach)", "description" => "Mara Voss acts."}
+      resolution = %{"outcome" => "success"}
+
+      assert {:ok, "Mara Voss tries to hack, and it works."} =
+               Narrator.narrate_action(action, resolution, theme, character)
+    end
+
+    test "a persona with no name keeps its title" do
+      theme = %{
+        "vocabulary" => %{},
+        "npc_personas" => %{"solo" => %{"title" => "Solo", "bot_assignments" => ["discord"]}}
+      }
+
+      character = %{"bot_id" => "discord", "name" => "The Herald"}
+      action = %{"action_type" => "shoot (combat)", "description" => "x"}
+
+      assert {:ok, "the Solo tries to shoot, and it works."} =
+               Narrator.narrate_action(action, %{"outcome" => "success"}, theme, character)
     end
 
     test "an action the theme's vocabulary names exactly keeps its vocabulary phrasing" do

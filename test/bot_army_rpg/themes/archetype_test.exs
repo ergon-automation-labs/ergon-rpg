@@ -133,6 +133,26 @@ defmodule BotArmyRpg.Themes.ArchetypeTest do
       assert hint =~ "fast-talking and shifty"
     end
 
+    test "names the persona when it has a name, and never carries a backstory or secret" do
+      hint =
+        Archetype.prompt_hint(
+          {:themed,
+           %{
+             "name" => "Mara Voss",
+             "title" => "Fixer",
+             "demeanor" => "street-smart connector",
+             "backstory" => "BACKSTORY-MARKER",
+             "secret" => "SECRET-MARKER",
+             "carries" => ["CARRIES-MARKER"],
+             "relationships" => %{"x" => "RELATIONSHIP-MARKER"}
+           }}
+        )
+
+      assert hint =~ "Mara Voss"
+      assert hint =~ "Fixer"
+      refute hint =~ "MARKER"
+    end
+
     test "omits demeanor when blank" do
       hint = Archetype.prompt_hint({:themed, %{"title" => "Trencher", "demeanor" => ""}})
       assert hint =~ "Trencher"

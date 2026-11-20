@@ -227,8 +227,8 @@ defmodule BotArmyRpg.GM.Narrator do
 
     actor =
       case archetype do
-        {:themed, _} ->
-          Archetype.display_label(archetype)
+        {:themed, persona} ->
+          persona_name(persona) || Archetype.display_label(archetype)
 
         _ ->
           named(theme, character) || action["description"] || "The character"
@@ -269,6 +269,9 @@ defmodule BotArmyRpg.GM.Narrator do
   end
 
   defp verb_of(_), do: "act"
+
+  defp persona_name(%{"name" => name}) when is_binary(name) and name != "", do: name
+  defp persona_name(_persona), do: nil
 
   defp named(theme, %{"name" => name} = character) when is_binary(name) and name != "",
     do: Archetype.display_name(theme, character)
