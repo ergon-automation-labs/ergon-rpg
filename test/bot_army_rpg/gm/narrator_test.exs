@@ -289,6 +289,60 @@ defmodule BotArmyRpg.GM.NarratorTest do
     end
   end
 
+  defmodule RecordingPublisher do
+    @moduledoc false
+    def request(subject, payload, _opts) do
+      send(Application.get_env(:bot_army_rpg, :narrator_test_pid), {:asked, subject, payload})
+      {:ok, %{"completion" => "The GM's own words."}}
+    end
+
+    def publish(_subject, _payload), do: :ok
+    def publish(_subject, _payload, _opts), do: :ok
+  end
+
+  describe "where the GM's words are written" do
+    setup do
+      Application.put_env(:bot_army_rpg, :nats_publisher, RecordingPublisher)
+      Application.put_env(:bot_army_rpg, :narrator_test_pid, self())
+
+      on_exit(fn ->
+        Application.delete_env(:bot_army_rpg, :nats_publisher)
+        Application.delete_env(:bot_army_rpg, :narrator_test_pid)
+        Application.delete_env(:bot_army_rpg, :llm_source)
+      end)
+    end
+
+    test "a scene is asked of the local models by default, so another provider's open breaker cannot refuse it" do
+      assert {:ok, _} = Narrator.narrate_scene("a rooftop", IronKingdoms.theme(), [])
+
+      assert_received {:asked, "llm.prompt.submit", payload}
+      assert payload["source"] == "local_ollama"
+      assert is_binary(payload["text"])
+    end
+
+    test "so is an action, and so is a mission's opening scene" do
+      assert {:ok, _} =
+               Narrator.narrate_action(
+                 %{"action_type" => "attack", "description" => "x"},
+                 %{"outcome" => "success"},
+                 IronKingdoms.theme()
+               )
+
+      assert_received {:asked, "llm.prompt.submit", %{"source" => "local_ollama"}}
+
+      assert {:ok, _} = Narrator.set_scene(IronKingdoms.theme())
+      assert_received {:asked, "llm.prompt.submit", %{"source" => "local_ollama"}}
+    end
+
+    test "the source is configuration: set to nil, the request names none and walks the default chain" do
+      Application.put_env(:bot_army_rpg, :llm_source, nil)
+      assert {:ok, _} = Narrator.narrate_scene("a rooftop", IronKingdoms.theme(), [])
+
+      assert_received {:asked, "llm.prompt.submit", payload}
+      refute Map.has_key?(payload, "source")
+    end
+  end
+
   describe "the LLM call" do
     test "the prompt is sent in the field the bot reads, and the prose is its answer" do
       Application.put_env(:bot_army_rpg, :nats_publisher, SpeakingPublisher)

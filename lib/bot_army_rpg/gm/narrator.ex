@@ -191,7 +191,7 @@ defmodule BotArmyRpg.GM.Narrator do
   # her chronicle as prose. An answer that is not prose is a failure, never narration: the
   # template speaks instead.
   defp call_llm(prompt_text) do
-    payload = %{"text" => prompt_text}
+    payload = with_source(%{"text" => prompt_text})
 
     case publisher().request("llm.prompt.submit", payload,
            timeout_ms: @llm_timeout_ms,
@@ -211,6 +211,17 @@ defmodule BotArmyRpg.GM.Narrator do
       {:error, reason} ->
         Logger.warning("[GM.Narrator] LLM narration failed: #{inspect(reason)}")
         {:error, reason}
+    end
+  end
+
+  # Where the GM's words are written. The default chain walks providers that other bots'
+  # failures open breakers on, and one open breaker refused every scene; the local source has
+  # a breaker of its own and no fallback. `config :bot_army_rpg, :llm_source, nil` goes back to
+  # the default chain.
+  defp with_source(payload) do
+    case Application.get_env(:bot_army_rpg, :llm_source, "local_ollama") do
+      source when is_binary(source) and source != "" -> Map.put(payload, "source", source)
+      _ -> payload
     end
   end
 
