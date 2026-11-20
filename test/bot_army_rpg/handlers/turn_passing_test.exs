@@ -86,6 +86,14 @@ defmodule BotArmyRpg.Handlers.TurnPassingTest do
     def facts, do: Agent.get(__MODULE__, & &1)
   end
 
+  defmodule Publisher do
+    @moduledoc false
+    # No broker in a test. The real publisher can stall for seconds waiting on a connection
+    # that never comes, which is how an orphaned chain outlived its test and wrote its turns
+    # into the next one's table.
+    def request(_subject, _payload, _opts), do: {:error, :unavailable}
+  end
+
   defmodule PartyStore do
     @moduledoc false
     def get_party(_tenant, _user), do: {:error, :not_found}
@@ -101,6 +109,7 @@ defmodule BotArmyRpg.Handlers.TurnPassingTest do
     Application.put_env(:bot_army_rpg, :theme_store, ThemeStore)
     Application.put_env(:bot_army_rpg, :scene_fact_store, SceneFactStore)
     Application.put_env(:bot_army_rpg, :party_store, PartyStore)
+    Application.put_env(:bot_army_rpg, :nats_publisher, Publisher)
 
     on_exit(fn ->
       Application.delete_env(:bot_army_rpg, :session_store)
@@ -108,6 +117,7 @@ defmodule BotArmyRpg.Handlers.TurnPassingTest do
       Application.delete_env(:bot_army_rpg, :theme_store)
       Application.delete_env(:bot_army_rpg, :scene_fact_store)
       Application.delete_env(:bot_army_rpg, :party_store)
+      Application.delete_env(:bot_army_rpg, :nats_publisher)
     end)
 
     :ok
