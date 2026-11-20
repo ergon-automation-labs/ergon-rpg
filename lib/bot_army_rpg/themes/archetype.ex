@@ -89,14 +89,7 @@ defmodule BotArmyRpg.Themes.Archetype do
   """
   def prompt_hint({:themed, persona}) do
     title = persona["title"] || "Unknown"
-    demeanor = persona["demeanor"]
-    actor = hinted_actor(persona["name"])
-
-    if is_binary(demeanor) and demeanor != "" do
-      "#{actor} presents as a #{title} — #{demeanor}."
-    else
-      "#{actor} presents as a #{title}."
-    end
+    "#{hinted_actor(persona["name"])} presents as a #{title}."
   end
 
   def prompt_hint({:default, %{"title" => title}}) when is_binary(title) do
