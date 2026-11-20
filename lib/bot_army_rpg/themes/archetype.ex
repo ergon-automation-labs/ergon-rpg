@@ -54,6 +54,34 @@ defmodule BotArmyRpg.Themes.Archetype do
   def for_character(_theme, _character), do: :no_actor
 
   @doc """
+  The name a character goes by under a theme: the persona's own name when the theme
+  reskins the bot that plays it, otherwise the name on the sheet. The sheet is never
+  changed - a theme switch changes who the party reads as, not who they are.
+  """
+  def display_name(theme, %{"name" => name} = character) do
+    case for_character(theme, character) do
+      {:themed, %{"name" => persona_name}} when is_binary(persona_name) and persona_name != "" ->
+        persona_name
+
+      _ ->
+        name
+    end
+  end
+
+  def display_name(_theme, _character), do: nil
+
+  @doc """
+  The persona a bot plays under a theme, as a key: the same for every bot the theme
+  assigns to one persona, and nil when none does.
+  """
+  def persona_key(theme, bot_id) do
+    case for_bot(theme, bot_id) do
+      {:themed, %{"_persona_key" => key}} -> key
+      _ -> nil
+    end
+  end
+
+  @doc """
   Render a one-line prompt hint for a resolved archetype.
 
   Returns an empty string when no archetype is available. Safe to splice
@@ -97,7 +125,7 @@ defmodule BotArmyRpg.Themes.Archetype do
       {persona_key, %{} = persona} ->
         assignments = persona |> Map.get("bot_assignments", []) |> List.wrap()
 
-        if bot_key in assignments do
+        if bot_key in assignments or bare_key(bot_key) in assignments do
           {persona_key, persona}
         else
           nil
@@ -107,6 +135,8 @@ defmodule BotArmyRpg.Themes.Archetype do
         nil
     end)
   end
+
+  defp bare_key(key), do: String.replace_suffix(key, "_bot", "")
 
   defp canonical_key(bot_id) do
     bot_id

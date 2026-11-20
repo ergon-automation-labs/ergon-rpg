@@ -42,6 +42,61 @@ defmodule BotArmyRpg.Themes.ArchetypeTest do
     end
   end
 
+  describe "a bot id that ends in _bot still finds its persona" do
+    @neon %{
+      "npc_personas" => %{
+        "fixer" => %{
+          "name" => "Mara Voss",
+          "title" => "Fixer",
+          "bot_assignments" => ["gtd", "synapse"]
+        },
+        "netrunner" => %{
+          "name" => "Kira Tanaka",
+          "title" => "Netrunner",
+          "bot_assignments" => ["llm"]
+        }
+      }
+    }
+
+    test "gtd_bot is assigned as gtd, llm_bot as llm" do
+      assert {:themed, %{"name" => "Mara Voss"}} = Archetype.for_bot(@neon, "gtd_bot")
+      assert {:themed, %{"name" => "Kira Tanaka"}} = Archetype.for_bot(@neon, "llm_bot")
+      assert {:themed, %{"name" => "Mara Voss"}} = Archetype.for_bot(@neon, "bot_army_gtd")
+    end
+  end
+
+  describe "display_name/2" do
+    @neon %{
+      "npc_personas" => %{
+        "fixer" => %{"name" => "Mara Voss", "title" => "Fixer", "bot_assignments" => ["gtd"]},
+        "solo" => %{"title" => "Solo", "bot_assignments" => ["discord"]}
+      }
+    }
+
+    test "is the persona's name when the theme reskins the bot" do
+      assert Archetype.display_name(@neon, %{"bot_id" => "gtd_bot", "name" => "The Lorekeeper"}) ==
+               "Mara Voss"
+    end
+
+    test "is the stored name when no persona claims the bot, as Eir's is" do
+      assert Archetype.display_name(@neon, %{"bot_id" => "companion_bot", "name" => "Eir"}) ==
+               "Eir"
+    end
+
+    test "is the stored name when the persona has no name, or there is no theme" do
+      assert Archetype.display_name(@neon, %{"bot_id" => "discord", "name" => "The Herald"}) ==
+               "The Herald"
+
+      assert Archetype.display_name(nil, %{"bot_id" => "gtd", "name" => "The Lorekeeper"}) ==
+               "The Lorekeeper"
+    end
+
+    test "is the stored name for a character no bot plays" do
+      assert Archetype.display_name(@neon, %{"user_id" => "u", "name" => "Default User"}) ==
+               "Default User"
+    end
+  end
+
   describe "for_bot/2 without a usable theme" do
     test "returns :no_theme when theme is nil" do
       assert :no_theme = Archetype.for_bot(nil, "gtd")

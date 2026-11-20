@@ -87,6 +87,20 @@ defmodule BotArmyRpg.GM.BotPlayerTest do
     end
   end
 
+  test "the line says the persona's name, not the sheet's" do
+    theme = %{
+      "rules" => %{"action_types" => ["attack"]},
+      "npc_personas" => %{
+        "fixer" => %{"name" => "Mara Voss", "bot_assignments" => ["gtd"]}
+      }
+    }
+
+    character = %{"name" => "The Lorekeeper", "class" => "Scheduler", "bot_id" => "gtd_bot"}
+    action = BotPlayer.decide_action("gtd_bot", character, %{}, theme)
+    assert action["description"] =~ "Mara Voss"
+    refute action["description"] =~ "Lorekeeper"
+  end
+
   test "an unknown class keeps its old default" do
     assert decide("Adventurer", ["attack", "skill"]) == "attack"
   end

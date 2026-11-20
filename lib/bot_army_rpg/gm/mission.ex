@@ -12,6 +12,7 @@ defmodule BotArmyRpg.GM.Mission do
   require Logger
 
   alias BotArmyRpg.GM.{Narrator, TurnManager}
+  alias BotArmyRpg.Themes.Archetype
   alias BotArmyRpg.Handlers.GMHandler
 
   @default_leader "companion_bot"
@@ -19,12 +20,14 @@ defmodule BotArmyRpg.GM.Mission do
   @max_rounds 10
   @crew_size 2
 
-  @spec crew([map()], String.t(), non_neg_integer(), ([map()] -> [map()])) :: [map()]
-  def crew(characters, leader_bot_id, count, shuffle \\ &Enum.shuffle/1) do
+  @spec crew([map()], String.t(), non_neg_integer(), ([map()] -> [map()]), map() | nil) ::
+          [map()]
+  def crew(characters, leader_bot_id, count, shuffle \\ &Enum.shuffle/1, theme \\ nil) do
     characters
     |> Enum.filter(&eligible?(&1, leader_bot_id))
     |> Enum.uniq_by(& &1["bot_id"])
     |> shuffle.()
+    |> Enum.uniq_by(&(Archetype.persona_key(theme, &1["bot_id"]) || &1["bot_id"]))
     |> Enum.take(count)
   end
 
@@ -43,7 +46,8 @@ defmodule BotArmyRpg.GM.Mission do
 
     with {:ok, leader} <- character_store().get_by_bot_id(tenant_id, leader_bot_id),
          {:ok, everyone} <- character_store().list(tenant_id),
-         [_ | _] = crew <- crew(everyone, leader_bot_id, @crew_size),
+         theme = current_theme(tenant_id),
+         [_ | _] = crew <- crew(everyone, leader_bot_id, @crew_size, &Enum.shuffle/1, theme),
          {:ok, scene} <- scene_for(params, tenant_id),
          party = [leader | crew],
          {:ok, session} <- open_table(tenant_id, scene, party),
@@ -51,7 +55,11 @@ defmodule BotArmyRpg.GM.Mission do
       roster =
         Enum.map(
           party,
-          &%{"character_id" => &1["id"], "name" => &1["name"], "bot_id" => &1["bot_id"]}
+          &%{
+            "character_id" => &1["id"],
+            "name" => Archetype.display_name(theme, &1),
+            "bot_id" => &1["bot_id"]
+          }
         )
 
       BotArmyRpg.NATS.Publisher.publish(
@@ -124,6 +132,15 @@ defmodule BotArmyRpg.GM.Mission do
       pid when is_pid(pid) -> send(pid, {:mission_finished, session_id})
       _ -> :ok
     end
+  end
+
+  defp current_theme(tenant_id) do
+    case theme_store().get_current(tenant_id) do
+      {:ok, theme} when is_map(theme) -> theme
+      _ -> nil
+    end
+  rescue
+    _ -> nil
   end
 
   defp rounds_of(n) when is_integer(n) and n >= 1, do: min(n, @max_rounds)

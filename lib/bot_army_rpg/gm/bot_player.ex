@@ -23,7 +23,11 @@ defmodule BotArmyRpg.GM.BotPlayer do
     %{
       "action_type" => action_type,
       "target_id" => nil,
-      "description" => default_description(action_type, character["name"]),
+      "description" =>
+        default_description(
+          action_type,
+          BotArmyRpg.Themes.Archetype.display_name(theme, character)
+        ),
       "base_damage" => default_damage(action_type)
     }
   end

@@ -103,6 +103,21 @@ defmodule BotArmyRpg.GM.MissionTest do
     def get_current(_tenant), do: raise("the theme store fell over")
   end
 
+  defmodule ThemeStoreNeon do
+    @moduledoc false
+    def get_current(_tenant),
+      do:
+        {:ok,
+         %{
+           "name" => "neon",
+           "rules" => %{},
+           "npc_personas" => %{
+             "fixer" => %{"name" => "Mara Voss", "bot_assignments" => ["gtd", "synapse"]},
+             "netrunner" => %{"name" => "Kira Tanaka", "bot_assignments" => ["llm"]}
+           }
+         }}
+  end
+
   defmodule Model do
     @moduledoc false
     def request("llm.prompt.submit", _payload, _opts) do
@@ -208,6 +223,33 @@ defmodule BotArmyRpg.GM.MissionTest do
     test "the draw is the shuffle's, and takes only as many as asked" do
       crew = Mission.crew(roster(), "companion_bot", 2, &Enum.reverse/1)
       assert Enum.map(crew, & &1["bot_id"]) == ["synapse", "llm_bot"]
+    end
+  end
+
+  describe "who is on the roster, by the theme's names" do
+    @personas %{
+      "fixer" => %{"name" => "Mara Voss", "bot_assignments" => ["gtd", "synapse"]},
+      "netrunner" => %{"name" => "Kira Tanaka", "bot_assignments" => ["llm"]}
+    }
+
+    test "two bots that share a persona are never both on the crew" do
+      theme = %{"npc_personas" => @personas}
+      crew = Mission.crew(roster(), "companion_bot", 10, & &1, theme)
+      bot_ids = Enum.map(crew, & &1["bot_id"])
+      assert bot_ids == ["gtd_bot", "llm_bot"]
+    end
+
+    test "the roster says the persona's name, and Eir stays Eir" do
+      Application.put_env(:bot_army_rpg, :theme_store, ThemeStoreNeon)
+
+      {:ok, %{"party" => party, "session_id" => id}} =
+        Mission.start(%{"tenant_id" => @tenant, "scene" => "a seeded scene"})
+
+      names = party |> Enum.map(& &1["name"]) |> Enum.sort()
+      assert "char-c-eir" in names or "Eir" in names
+      assert Enum.any?(names, &(&1 in ["Mara Voss", "Kira Tanaka"]))
+      refute Enum.any?(names, &String.starts_with?(&1, "char-c-gtd"))
+      _ = ended(id)
     end
   end
 
