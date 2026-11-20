@@ -20,16 +20,10 @@ defmodule BotArmyRpg.GM.Narrator do
 
   alias BotArmyRpg.Themes.Archetype
 
-  # How long a model may take before its answer is declared missing. Three seconds was a
-  # deadline the model never met: the real scene prompt (theme + vocabulary + the table's
-  # facts) measured 7.5 s once and 31.6 s once on 2026-10-26, and the runtime's circuit
-  # breaker answers the *first* timeout with a 60 s cooldown — so one slow answer turned
-  # the whole next minute into template prose. A local model is not late at three
-  # seconds; it is just still writing. `rpg.scene.narrate` now accepts "async": true so
-  # the caller that must not wait (a LiveView) can be answered at once and read the prose
-  # back; this ceiling is only the point at which a *prompt* is declared unanswered.
-  @llm_timeout_ms 180_000
-  @circuit_breaker_key "rpg:gm:llm.narrate"
+  # How long one turn's line may be waited for. A scene is waited for as long as the job needs
+  # (`BotArmyRpg.GM.LlmJob.default_wait_ms/0`); a turn's line is asked for while a request is open
+  # (a player's `rpg.action.resolve`), so it gets this shorter leash and then the template speaks.
+  @action_wait_ms 90_000
 
   @doc """
   Narrate a scene using theme vocabulary and templates.
@@ -37,7 +31,7 @@ defmodule BotArmyRpg.GM.Narrator do
   Returns `{:ok, String.t()}` or `{:error, reason}`.
   """
   def narrate_scene(scene_description, theme, recent_facts) do
-    call_llm(build_scene_prompt(scene_description, theme, recent_facts))
+    call_llm(build_scene_prompt(scene_description, theme, recent_facts), scene_wait_ms())
   end
 
   @doc """
@@ -47,7 +41,7 @@ defmodule BotArmyRpg.GM.Narrator do
   a scene, and the caller is told so.
   """
   def set_scene(theme) do
-    call_llm(build_mission_scene_prompt(theme))
+    call_llm(build_mission_scene_prompt(theme), scene_wait_ms())
   end
 
   @doc """
@@ -63,7 +57,7 @@ defmodule BotArmyRpg.GM.Narrator do
     archetype = Archetype.for_character(theme, character || %{})
     prompt = build_action_prompt(action, resolution, theme, archetype)
 
-    case call_llm(prompt) do
+    case call_llm(prompt, action_wait_ms()) do
       {:ok, text} -> {:ok, text}
       {:error, _} -> {:ok, fallback_action(action, resolution, theme, archetype, character)}
     end
@@ -182,52 +176,25 @@ defmodule BotArmyRpg.GM.Narrator do
 
   # --- LLM call ---
 
-  # `llm.prompt.submit` reads the prompt from `"text"` and answers the completion under
-  # `"completion"`, unwrapped. This sent `%{"prompt" => …}` and read `data["text"] ||
-  # data["response"] || inspect(data)`, so every narration the fleet ever produced was the
-  # *inspection of the refusal*: measured 2026-10-26, a turn's fact read
-  # `%{"error" => ":empty_prompt", "prompt_id" => "226e8fbb-…"}` — the bot said the prompt
-  # was empty because it looked in a field nobody wrote, and rpg wrote that sentence into
-  # her chronicle as prose. An answer that is not prose is a failure, never narration: the
-  # template speaks instead.
-  defp call_llm(prompt_text) do
-    payload = with_source(%{"text" => prompt_text})
-
-    case publisher().request("llm.prompt.submit", payload,
-           timeout_ms: @llm_timeout_ms,
-           circuit_breaker_key: @circuit_breaker_key
-         ) do
-      {:ok, %{"completion" => text}} when is_binary(text) and text != "" ->
+  # The GM's words are asked for as an async job and waited for (`BotArmyRpg.GM.LlmJob`), so a
+  # prompt queued behind other callers is not timed out by a clock that ran while it waited.
+  # An answer that is not prose is a failure, never narration: measured 2026-10-26, a turn's
+  # fact once read `%{"error" => ":empty_prompt", ...}` - the refusal, inspected and written
+  # into her chronicle as prose. The job module refuses errors, blanks and the bot's canned
+  # fallback by name, and the template speaks instead.
+  defp call_llm(prompt_text, wait_ms) do
+    case BotArmyRpg.GM.LlmJob.ask(prompt_text, wait_ms: wait_ms) do
+      {:ok, text} ->
         {:ok, text}
 
-      {:ok, %{"error" => reason}} ->
-        Logger.warning("[GM.Narrator] The LLM refused the prompt: #{inspect(reason)}")
-        {:error, {:llm_error, reason}}
-
-      {:ok, other} ->
-        Logger.warning("[GM.Narrator] The LLM's answer was not prose: #{inspect(other)}")
-        {:error, :unreadable_reply}
-
       {:error, reason} ->
-        Logger.warning("[GM.Narrator] LLM narration failed: #{inspect(reason)}")
+        Logger.warning("[GM.Narrator] No words from the LLM: #{inspect(reason)}")
         {:error, reason}
     end
   end
 
-  # Where the GM's words are written. The default chain walks providers that other bots'
-  # failures open breakers on, and one open breaker refused every scene; the local source has
-  # a breaker of its own and no fallback. `config :bot_army_rpg, :llm_source, nil` goes back to
-  # the default chain.
-  defp with_source(payload) do
-    case Application.get_env(:bot_army_rpg, :llm_source, "local_ollama") do
-      source when is_binary(source) and source != "" -> Map.put(payload, "source", source)
-      _ -> payload
-    end
-  end
-
-  defp publisher do
-    Application.get_env(:bot_army_rpg, :nats_publisher, BotArmyLibraryRuntime.NATS.Publisher)
-  end
+  defp scene_wait_ms, do: BotArmyRpg.GM.LlmJob.default_wait_ms()
+  defp action_wait_ms, do: Application.get_env(:bot_army_rpg, :action_wait_ms, @action_wait_ms)
 
   # --- Fallbacks ---
 

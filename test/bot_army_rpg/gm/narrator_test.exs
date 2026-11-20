@@ -15,18 +15,31 @@ defmodule BotArmyRpg.GM.NarratorTest do
   defmodule SpeakingPublisher do
     @moduledoc false
     # The bot's real shape: the completion, unwrapped, under `"completion"`.
-    def request("llm.prompt.submit", %{"text" => text}, _opts) when is_binary(text),
-      do: {:ok, %{"completion" => "The GM's own words.", "model" => "stub"}}
+    def request(subject, payload, opts),
+      do:
+        BotArmyRpg.JobPublisher.request(
+          fn _prompt, _payload, _opts -> {:content, "The GM's own words."} end,
+          subject,
+          payload,
+          opts
+        )
 
-    def request(_subject, _payload, _opts), do: {:error, :unavailable}
     def publish(_subject, _payload), do: :ok
     def publish(_subject, _payload, _opts), do: :ok
   end
 
   defmodule RefusingPublisher do
     @moduledoc false
-    def request(_subject, _payload, _opts),
-      do: {:ok, %{"error" => ":empty_prompt", "prompt_id" => "226e8fbb"}}
+    def request(subject, payload, opts),
+      do:
+        BotArmyRpg.JobPublisher.request(
+          fn _prompt, _payload, _opts ->
+            {:result, %{"error" => ":empty_prompt", "prompt_id" => "226e8fbb"}}
+          end,
+          subject,
+          payload,
+          opts
+        )
 
     def publish(_subject, _payload), do: :ok
     def publish(_subject, _payload, _opts), do: :ok
@@ -40,8 +53,14 @@ defmodule BotArmyRpg.GM.NarratorTest do
     "narration" IS the prompt — which lets a test read what the GM was told without
     a side channel, a named process, or a second assertion target.
     """
-    def request("llm.prompt.submit", %{"text" => text}, _opts),
-      do: {:ok, %{"completion" => text}}
+    def request(subject, payload, opts),
+      do:
+        BotArmyRpg.JobPublisher.request(
+          fn prompt, _payload, _opts -> {:content, prompt} end,
+          subject,
+          payload,
+          opts
+        )
 
     def request(_subject, _payload, _opts), do: {:error, :unavailable}
     def publish(_subject, _payload), do: :ok
@@ -291,9 +310,15 @@ defmodule BotArmyRpg.GM.NarratorTest do
 
   defmodule RecordingPublisher do
     @moduledoc false
-    def request(subject, payload, _opts) do
+    def request(subject, payload, opts) do
       send(Application.get_env(:bot_army_rpg, :narrator_test_pid), {:asked, subject, payload})
-      {:ok, %{"completion" => "The GM's own words."}}
+
+      BotArmyRpg.JobPublisher.request(
+        fn _prompt, _payload, _opts -> {:content, "The GM's own words."} end,
+        subject,
+        payload,
+        opts
+      )
     end
 
     def publish(_subject, _payload), do: :ok
@@ -315,9 +340,11 @@ defmodule BotArmyRpg.GM.NarratorTest do
     test "a scene is asked of the local models by default, so another provider's open breaker cannot refuse it" do
       assert {:ok, _} = Narrator.narrate_scene("a rooftop", IronKingdoms.theme(), [])
 
-      assert_received {:asked, "llm.prompt.submit", payload}
+      assert_received {:asked, "llm.request.chat", payload}
       assert payload["source"] == "local_ollama"
-      assert is_binary(payload["text"])
+      assert payload["async"] == true
+      assert payload["priority"] == "interactive"
+      assert is_binary(get_in(payload, ["prompt_context", "prompt"]))
     end
 
     test "so is an action, and so is a mission's opening scene" do
@@ -328,17 +355,17 @@ defmodule BotArmyRpg.GM.NarratorTest do
                  IronKingdoms.theme()
                )
 
-      assert_received {:asked, "llm.prompt.submit", %{"source" => "local_ollama"}}
+      assert_received {:asked, "llm.request.chat", %{"source" => "local_ollama"}}
 
       assert {:ok, _} = Narrator.set_scene(IronKingdoms.theme())
-      assert_received {:asked, "llm.prompt.submit", %{"source" => "local_ollama"}}
+      assert_received {:asked, "llm.request.chat", %{"source" => "local_ollama"}}
     end
 
     test "the source is configuration: set to nil, the request names none and walks the default chain" do
       Application.put_env(:bot_army_rpg, :llm_source, nil)
       assert {:ok, _} = Narrator.narrate_scene("a rooftop", IronKingdoms.theme(), [])
 
-      assert_received {:asked, "llm.prompt.submit", payload}
+      assert_received {:asked, "llm.request.chat", payload}
       refute Map.has_key?(payload, "source")
     end
   end

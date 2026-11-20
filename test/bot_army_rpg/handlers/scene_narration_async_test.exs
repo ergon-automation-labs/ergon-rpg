@@ -38,14 +38,20 @@ defmodule BotArmyRpg.Handlers.SceneNarrationAsyncTest do
   # assumed.
   defmodule ProsePublisher do
     @moduledoc false
-    def request("llm.prompt.submit", _payload, opts) do
+    def request(subject, payload, opts) do
       # The caller's pid, not `self()`: the async path asks from a Task, and the test is
       # the process that wants to hear about it.
-      send(Application.get_env(:bot_army_rpg, :prose_probe), {:asked_with, opts})
-      {:ok, %{"completion" => "The hall lay open to the sky."}}
+      if subject == "llm.request.chat",
+        do: send(Application.get_env(:bot_army_rpg, :prose_probe), {:asked_with, payload, opts})
+
+      BotArmyRpg.JobPublisher.request(
+        fn _prompt, _payload, _opts -> {:content, "The hall lay open to the sky."} end,
+        subject,
+        payload,
+        opts
+      )
     end
 
-    def request(_subject, _payload, _opts), do: {:error, :no_bridge}
     def publish(_subject, _payload, _opts), do: :ok
   end
 
@@ -53,12 +59,18 @@ defmodule BotArmyRpg.Handlers.SceneNarrationAsyncTest do
   # at all, the elapsed assertion below would fail.
   defmodule SlowPublisher do
     @moduledoc false
-    def request("llm.prompt.submit", _payload, _opts) do
-      Process.sleep(600)
-      {:ok, %{"completion" => "Slow prose."}}
+    def request(subject, payload, opts) do
+      BotArmyRpg.JobPublisher.request(
+        fn _prompt, _payload, _opts ->
+          Process.sleep(600)
+          {:content, "Slow prose."}
+        end,
+        subject,
+        payload,
+        opts
+      )
     end
 
-    def request(_subject, _payload, _opts), do: {:error, :no_bridge}
     def publish(_subject, _payload, _opts), do: :ok
   end
 
@@ -216,11 +228,13 @@ defmodule BotArmyRpg.Handlers.SceneNarrationAsyncTest do
 
       assert {:ok, %{"narration" => @prose}} = GMHandler.handle_scene_narrate(payload())
 
-      assert_receive {:asked_with, opts}, 500
-      timeout = Keyword.fetch!(opts, :timeout_ms)
+      assert_receive {:asked_with, payload, _opts}, 500
+      assert payload["async"] == true
 
-      assert timeout >= 60_000,
-             "the timeout is #{timeout} ms — a local model is not late at three seconds"
+      wait = BotArmyRpg.GM.LlmJob.default_wait_ms()
+
+      assert wait >= 60_000,
+             "the wait is #{wait} ms - a local model is not late at three seconds"
     end
   end
 

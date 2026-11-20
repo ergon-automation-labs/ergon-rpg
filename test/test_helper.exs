@@ -3,6 +3,7 @@ ExUnit.start()
 
 Code.require_file("support/fake_party_repo.ex", __DIR__)
 Code.require_file("support/postgres_helper.ex", __DIR__)
+Code.require_file("support/job_publisher.ex", __DIR__)
 
 Mox.defmock(BotArmyRpg.CharacterStoreMock, for: BotArmyRpg.CharacterStoreBehaviour)
 Mox.defmock(BotArmyRpg.SessionStoreMock, for: BotArmyRpg.SessionStoreBehaviour)

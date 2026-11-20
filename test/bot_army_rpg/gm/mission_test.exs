@@ -120,12 +120,17 @@ defmodule BotArmyRpg.GM.MissionTest do
 
   defmodule Model do
     @moduledoc false
-    def request("llm.prompt.submit", _payload, _opts) do
-      Process.sleep(Application.get_env(:bot_army_rpg, :mission_test_model_delay_ms, 0))
-      {:ok, %{"completion" => "A rooftop deal goes sideways above the Nexus."}}
+    def request(subject, payload, opts) do
+      BotArmyRpg.JobPublisher.request(
+        fn _prompt, _payload, _opts ->
+          Process.sleep(Application.get_env(:bot_army_rpg, :mission_test_model_delay_ms, 0))
+          {:content, "A rooftop deal goes sideways above the Nexus."}
+        end,
+        subject,
+        payload,
+        opts
+      )
     end
-
-    def request(_subject, _payload, _opts), do: {:error, :unavailable}
   end
 
   defmodule DownModel do
@@ -254,36 +259,62 @@ defmodule BotArmyRpg.GM.MissionTest do
   end
 
   describe "start/1" do
-    test "seats Eir and two crew, owned by no user, under a scene the GM set" do
-      assert {:ok, %{"session_id" => id, "scene" => scene, "party" => party, "rounds" => 5}} =
-               Mission.start(%{"tenant_id" => @tenant})
+    test "seats Eir and two crew, owned by no user, and answers at once with the scene still to come" do
+      assert {:ok,
+              %{
+                "session_id" => id,
+                "scene" => nil,
+                "scene_pending" => true,
+                "party" => party,
+                "rounds" => 5
+              }} = Mission.start(%{"tenant_id" => @tenant})
 
-      assert scene == "A rooftop deal goes sideways above the Nexus."
       assert length(party) == 3
       assert Enum.any?(party, &(&1["bot_id"] == "companion_bot"))
       refute Enum.any?(party, &(&1["bot_id"] in ["companion_bot_retired", nil]))
 
-      {:ok, session} = SessionStore.get(@tenant, id)
+      session = ended(id)
       assert session["user_id"] == nil
-      assert session["scene_description"] == scene
+      assert session["scene_description"] == "A rooftop deal goes sideways above the Nexus."
       assert map_size(session["character_ids"]) == 3
-      _ = ended(id)
+    end
+
+    test "a caller is not held for a slow GM: start answers before the scene is written" do
+      Application.put_env(:bot_army_rpg, :mission_test_model_delay_ms, 300)
+      on_exit(fn -> Application.delete_env(:bot_army_rpg, :mission_test_model_delay_ms) end)
+
+      {micros, {:ok, %{"session_id" => id}}} =
+        :timer.tc(fn -> Mission.start(%{"tenant_id" => @tenant, "rounds" => 1}) end)
+
+      assert micros < 200_000, "start took #{div(micros, 1000)} ms - it waited for the GM"
+      assert {:ok, %{"scene_description" => nil}} = SessionStore.get(@tenant, id)
+      assert ended(id)["scene_description"] =~ "rooftop"
     end
 
     test "a seed from the operator is the scene, and the GM is not asked" do
       Application.put_env(:bot_army_rpg, :nats_publisher, DownModel)
 
-      assert {:ok, %{"scene" => "a heist at the data vault", "session_id" => id}} =
+      assert {:ok,
+              %{
+                "scene" => "a heist at the data vault",
+                "scene_pending" => false,
+                "session_id" => id
+              }} =
                Mission.start(%{"tenant_id" => @tenant, "scene" => "a heist at the data vault"})
 
-      _ = ended(id)
+      assert ended(id)["scene_description"] == "a heist at the data vault"
     end
 
-    test "a GM that cannot write a scene sends nobody out, and opens no table" do
+    test "a GM that cannot write a scene ends the table and plays nobody's turn" do
       Application.put_env(:bot_army_rpg, :nats_publisher, DownModel)
 
-      assert {:error, :timeout} = Mission.start(%{"tenant_id" => @tenant})
-      assert SessionStore.all() == []
+      assert {:ok, %{"session_id" => id, "scene_pending" => true}} =
+               Mission.start(%{"tenant_id" => @tenant})
+
+      session = ended(id)
+      assert session["scene_description"] == nil
+      assert get_in(session, ["metadata", "turn_state", "turn_history"]) == []
+      assert SceneFactStore.facts() == []
     end
 
     test "no character for the leader is a refusal, not a table of crew alone" do

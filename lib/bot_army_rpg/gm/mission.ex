@@ -43,14 +43,14 @@ defmodule BotArmyRpg.GM.Mission do
     tenant_id = params["tenant_id"] || BotArmyLibraryRuntime.Tenant.default_tenant_id()
     leader_bot_id = params["leader_bot_id"] || @default_leader
     rounds = rounds_of(params["rounds"])
+    seed = seed_of(params)
 
     with {:ok, leader} <- character_store().get_by_bot_id(tenant_id, leader_bot_id),
          {:ok, everyone} <- character_store().list(tenant_id),
          theme = current_theme(tenant_id),
          [_ | _] = crew <- crew(everyone, leader_bot_id, @crew_size, &Enum.shuffle/1, theme),
-         {:ok, scene} <- scene_for(params, tenant_id),
          party = [leader | crew],
-         {:ok, session} <- open_table(tenant_id, scene, party),
+         {:ok, session} <- open_table(tenant_id, seed, party),
          {:ok, session} <- seat_the_round(tenant_id, session) do
       roster =
         Enum.map(
@@ -62,22 +62,21 @@ defmodule BotArmyRpg.GM.Mission do
           }
         )
 
-      BotArmyRpg.NATS.Publisher.publish(
-        "rpg.mission.started",
-        %{
-          "session_id" => session["id"],
-          "scene" => scene,
-          "party" => roster,
-          "rounds" => rounds,
-          "leader_bot_id" => leader_bot_id
-        },
-        tenant_id: tenant_id
-      )
-
-      Task.start(fn -> run(tenant_id, session["id"], rounds, leader_bot_id) end)
+      # The table is open and answered for at once. A scene the GM has to write may take as long
+      # as the model needs (it is an async job in the LLM bot's queue), so the caller is not held
+      # for it: the session shows the scene when it arrives, and `rpg.mission.started` says so.
+      Task.start(fn ->
+        begin(tenant_id, session["id"], seed, roster, rounds, leader_bot_id)
+      end)
 
       {:ok,
-       %{"session_id" => session["id"], "scene" => scene, "party" => roster, "rounds" => rounds}}
+       %{
+         "session_id" => session["id"],
+         "scene" => seed,
+         "scene_pending" => is_nil(seed),
+         "party" => roster,
+         "rounds" => rounds
+       }}
     else
       [] -> {:error, :no_crew}
       {:error, _} = error -> error
@@ -146,18 +145,49 @@ defmodule BotArmyRpg.GM.Mission do
   defp rounds_of(n) when is_integer(n) and n >= 1, do: min(n, @max_rounds)
   defp rounds_of(_), do: @default_rounds
 
-  defp scene_for(params, tenant_id) do
+  defp seed_of(params) do
     case params["scene"] do
       seed when is_binary(seed) ->
         case String.trim(seed) do
-          "" -> ask_the_gm(tenant_id)
-          trimmed -> {:ok, trimmed}
+          "" -> nil
+          trimmed -> trimmed
         end
 
       _ ->
-        ask_the_gm(tenant_id)
+        nil
     end
   end
+
+  defp begin(tenant_id, session_id, seed, roster, rounds, leader_bot_id) do
+    case scene_for(seed, tenant_id) do
+      {:ok, scene} ->
+        if is_nil(seed),
+          do: session_store().update(tenant_id, session_id, %{"scene_description" => scene})
+
+        BotArmyRpg.NATS.Publisher.publish(
+          "rpg.mission.started",
+          %{
+            "session_id" => session_id,
+            "scene" => scene,
+            "party" => roster,
+            "rounds" => rounds,
+            "leader_bot_id" => leader_bot_id
+          },
+          tenant_id: tenant_id
+        )
+
+        run(tenant_id, session_id, rounds, leader_bot_id)
+
+      {:error, reason} ->
+        finish(tenant_id, session_id, "no scene: #{inspect(reason)}", leader_bot_id)
+    end
+  rescue
+    error ->
+      finish(tenant_id, session_id, "crashed: #{Exception.message(error)}", leader_bot_id)
+  end
+
+  defp scene_for(seed, _tenant_id) when is_binary(seed), do: {:ok, seed}
+  defp scene_for(nil, tenant_id), do: ask_the_gm(tenant_id)
 
   defp ask_the_gm(tenant_id) do
     with {:ok, theme} <- theme_store().get_current(tenant_id) do
