@@ -140,9 +140,7 @@ defmodule BotArmyRpg.CharacterProvisioning do
 
     case theme_store.get_current(tenant_id) do
       {:ok, theme} ->
-        setting = theme["setting"] || ""
-
-        if String.contains?(String.downcase(setting), "cyberpunk") do
+        if cyberpunk_theme?(theme) do
           BotArmyRpg.Defaults.default_cyberpunk_stats()
         else
           BotArmyRpg.Defaults.default_pathfinder_stats()
@@ -151,6 +149,22 @@ defmodule BotArmyRpg.CharacterProvisioning do
       _ ->
         BotArmyRpg.Defaults.default_pathfinder_stats()
     end
+  end
+
+  @cyberpunk_markers ["cyberpunk", "netrunn"]
+
+  defp cyberpunk_theme?(theme) do
+    text =
+      ["setting", "mechanic", "tone"]
+      |> Enum.map_join(" ", fn key ->
+        case theme[key] do
+          value when is_binary(value) -> value
+          _ -> ""
+        end
+      end)
+      |> String.downcase()
+
+    Enum.any?(@cyberpunk_markers, &String.contains?(text, &1))
   end
 
   @doc """

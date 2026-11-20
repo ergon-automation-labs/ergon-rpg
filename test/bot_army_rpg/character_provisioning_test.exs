@@ -69,6 +69,55 @@ defmodule BotArmyRpg.CharacterProvisioningTest do
     end
   end
 
+  describe "stats follow the current theme" do
+    @tenant "00000000-0000-0000-0000-000000000001"
+
+    defp stats_made_under(theme_reply) do
+      BotArmyRpg.ThemeStoreMock
+      |> expect(:get_current, fn @tenant -> theme_reply end)
+
+      BotArmyRpg.CharacterStoreMock
+      |> expect(:get_by_bot_id, fn @tenant, "companion" -> {:error, :not_found} end)
+      |> expect(:create, fn payload ->
+        send(self(), {:stats, payload["stats"]})
+        {:ok, Map.put(payload, "id", Ecto.UUID.generate())}
+      end)
+
+      {:ok, _} = CharacterProvisioning.ensure_bot_character("companion", @tenant)
+      assert_received {:stats, stats}
+      stats
+    end
+
+    test "the live Neon Nexus theme, which never says 'cyberpunk' in its setting, gets cyberpunk stats" do
+      neon_nexus = %{
+        "setting" => "Neon Nexus City",
+        "mechanic" => "netrunning, combat implants, corporate intrigue, choice and consequence",
+        "tone" =>
+          "high-tech low-life, paranoid transhumanism, corporate conspiracy, chrome dreams and silicon nightmares"
+      }
+
+      assert stats_made_under({:ok, neon_nexus}) == BotArmyRpg.Defaults.default_cyberpunk_stats()
+    end
+
+    test "a setting that says cyberpunk still gets cyberpunk stats" do
+      assert stats_made_under({:ok, %{"setting" => "Cyberpunk"}}) ==
+               BotArmyRpg.Defaults.default_cyberpunk_stats()
+    end
+
+    test "a fantasy theme gets pathfinder stats" do
+      assert stats_made_under({:ok, %{"setting" => "fantasy", "mechanic" => "d20 + stat"}}) ==
+               BotArmyRpg.Defaults.default_pathfinder_stats()
+    end
+
+    test "no theme, or one with null fields, gets pathfinder stats" do
+      assert stats_made_under({:error, :not_found}) ==
+               BotArmyRpg.Defaults.default_pathfinder_stats()
+
+      assert stats_made_under({:ok, %{"setting" => nil, "mechanic" => nil}}) ==
+               BotArmyRpg.Defaults.default_pathfinder_stats()
+    end
+  end
+
   describe "get_bot_character/2" do
     test "returns character when found" do
       tenant = "00000000-0000-0000-0000-000000000001"
