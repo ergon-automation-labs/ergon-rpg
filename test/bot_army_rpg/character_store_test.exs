@@ -4,6 +4,64 @@ defmodule BotArmyRpg.CharacterStoreTest do
 
   alias BotArmyRpg.CharacterStore
 
+  describe "a level-up boosts the class's primary ability, under either stat block" do
+    @pathfinder %{
+      "ability_scores" => %{
+        "str" => 10,
+        "dex" => 10,
+        "int" => 10,
+        "wis" => 10,
+        "cha" => 10,
+        "con" => 10
+      },
+      "xp" => 5
+    }
+    @cyberpunk %{
+      "ability_scores" => %{
+        "body" => 10,
+        "ref" => 10,
+        "tech" => 10,
+        "net" => 10,
+        "emp" => 10,
+        "cool" => 10
+      },
+      "xp" => 5
+    }
+
+    defp boosted(stats, class), do: CharacterStore.boost_primary_ability(stats, class, 2)
+
+    test "a pathfinder block keeps its own keys" do
+      assert boosted(@pathfinder, "Oracle")["ability_scores"]["wis"] == 11
+      assert boosted(@pathfinder, "Scheduler")["ability_scores"]["str"] == 11
+      assert boosted(@pathfinder, "Fixer")["ability_scores"]["cha"] == 11
+      assert boosted(@pathfinder, "Shapeshifter")["ability_scores"]["dex"] == 11
+      assert boosted(@pathfinder, "Scribe")["ability_scores"]["int"] == 11
+    end
+
+    test "a cyberpunk block is boosted under its own names, with no stray pathfinder key" do
+      oracle = boosted(@cyberpunk, "Oracle")["ability_scores"]
+      assert oracle["net"] == 11
+      refute Map.has_key?(oracle, "wis")
+
+      scheduler = boosted(@cyberpunk, "Scheduler")["ability_scores"]
+      assert scheduler["body"] == 11
+      refute Map.has_key?(scheduler, "str")
+
+      assert boosted(@cyberpunk, "Face")["ability_scores"]["emp"] == 11
+      assert boosted(@cyberpunk, "Fixer")["ability_scores"]["emp"] == 11
+      assert boosted(@cyberpunk, "Shapeshifter")["ability_scores"]["ref"] == 11
+      assert boosted(@cyberpunk, "Scribe")["ability_scores"]["tech"] == 11
+    end
+
+    test "only the primary ability moves, and the rest of the sheet is kept" do
+      after_boost = boosted(@cyberpunk, "Oracle")
+      assert after_boost["xp"] == 5
+
+      unchanged = Map.delete(after_boost["ability_scores"], "net")
+      assert unchanged == Map.delete(@cyberpunk["ability_scores"], "net")
+    end
+  end
+
   # The handlers used to call this module's own client functions (get_by_user_id/2 and
   # update/3 are GenServer.call/3 into the process running the handler). OTP detects that and
   # exits with :calling_self, so the store died on every award and the caller got a crash

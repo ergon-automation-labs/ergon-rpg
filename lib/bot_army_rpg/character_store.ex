@@ -336,26 +336,34 @@ defmodule BotArmyRpg.CharacterStore do
     end
   end
 
-  defp boost_primary_ability(stats, class, _new_level) do
+  @cyberpunk_ability %{
+    "str" => "body",
+    "dex" => "ref",
+    "int" => "tech",
+    "wis" => "net",
+    "cha" => "emp",
+    "con" => "cool"
+  }
+
+  @doc false
+  def boost_primary_ability(stats, class, _new_level) do
     ability_scores = Map.get(stats, "ability_scores", %{})
+    key = ability_scores |> ability_key(class)
 
-    boosted =
-      case class do
-        "Wizard" -> Map.update(ability_scores, "int", 10, &(&1 + 1))
-        "Scribe" -> Map.update(ability_scores, "int", 10, &(&1 + 1))
-        "Oracle" -> Map.update(ability_scores, "wis", 10, &(&1 + 1))
-        "Drillmaster" -> Map.update(ability_scores, "str", 10, &(&1 + 1))
-        "Sentinel" -> Map.update(ability_scores, "str", 10, &(&1 + 1))
-        "Steward" -> Map.update(ability_scores, "str", 10, &(&1 + 1))
-        "Fixer" -> Map.update(ability_scores, "cha", 10, &(&1 + 1))
-        "Herald" -> Map.update(ability_scores, "cha", 10, &(&1 + 1))
-        "Shapeshifter" -> Map.update(ability_scores, "dex", 10, &(&1 + 1))
-        "Archivist" -> Map.update(ability_scores, "wis", 10, &(&1 + 1))
-        _ -> Map.update(ability_scores, "str", 10, &(&1 + 1))
-      end
-
-    Map.put(stats, "ability_scores", boosted)
+    Map.put(stats, "ability_scores", Map.update(ability_scores, key, 10, &(&1 + 1)))
   end
+
+  defp ability_key(ability_scores, class) do
+    key = primary_ability(class)
+
+    if Map.has_key?(ability_scores, "net"), do: Map.fetch!(@cyberpunk_ability, key), else: key
+  end
+
+  defp primary_ability(class) when class in ["Wizard", "Scribe"], do: "int"
+  defp primary_ability(class) when class in ["Oracle", "Archivist"], do: "wis"
+  defp primary_ability(class) when class in ["Fixer", "Herald", "Face"], do: "cha"
+  defp primary_ability("Shapeshifter"), do: "dex"
+  defp primary_ability(_class), do: "str"
 
   defp convert_to_uuid(value) when is_binary(value) do
     case Ecto.UUID.cast(value) do
