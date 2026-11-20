@@ -260,6 +260,17 @@ defmodule BotArmyRpg.NATS.Consumer do
       description: "GM adjudicates a declared action"
     },
     %{
+      subject: "rpg.mission.start",
+      type: :request_reply,
+      description:
+        "Send the leader (Eir) and two random bot crew on a mission with no player; the GM sets the scene"
+    },
+    %{
+      subject: "rpg.mission.stop",
+      type: :request_reply,
+      description: "End a mission's table; the driver plays no further turn"
+    },
+    %{
       subject: "rpg.scene.narrate",
       type: :request_reply,
       description: "Generate GM narration for a scene (async: true answers at once)"
@@ -546,6 +557,12 @@ defmodule BotArmyRpg.NATS.Consumer do
 
       "rpg.action.resolve" ->
         GMHandler.handle_action_resolve(body)
+
+      "rpg.mission.start" ->
+        BotArmyRpg.GM.Mission.start(body["payload"] || body)
+
+      "rpg.mission.stop" ->
+        BotArmyRpg.GM.Mission.stop(body["payload"] || body)
 
       "rpg.scene.narrate" ->
         GMHandler.handle_scene_narrate(body)

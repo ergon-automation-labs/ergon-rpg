@@ -69,6 +69,14 @@ defmodule BotArmyRpg.NATS.ConsumerSubjectsTest do
     end
   end
 
+  test "a mission can be started and stopped over the wire" do
+    advertised = Enum.map(Consumer.subjects(), & &1.subject)
+
+    for subject <- ~w(rpg.mission.start rpg.mission.stop) do
+      assert subject in advertised
+    end
+  end
+
   test "every subject the consumer already advertised is still advertised" do
     advertised = Enum.map(Consumer.subjects(), & &1.subject)
 

@@ -41,6 +41,16 @@ defmodule BotArmyRpg.GM.Narrator do
   end
 
   @doc """
+  The GM sets the opening scene of a mission in the current theme's world.
+
+  Like a scene narration, it has no template fallback: a model that does not answer is not
+  a scene, and the caller is told so.
+  """
+  def set_scene(theme) do
+    call_llm(build_mission_scene_prompt(theme))
+  end
+
+  @doc """
   Narrate an action resolution using theme vocabulary.
 
   Pass `character` (the actor's character map, including `"bot_id"`) to
@@ -114,6 +124,22 @@ defmodule BotArmyRpg.GM.Narrator do
     #{facts_text}
 
     Respond with a single paragraph of vivid narration (3-5 sentences).
+    """
+    |> String.trim()
+  end
+
+  defp build_mission_scene_prompt(theme) do
+    setting = theme["setting"] || "unknown realm"
+    tone = theme["tone"] || "neutral"
+    mechanic = theme["mechanic"] || ""
+
+    """
+    You are the Game Master of a #{setting} setting with a #{tone} tone. #{mechanic}
+
+    A small party of adventurers is being sent on a mission. Set the opening situation: where
+    they are, what is at stake, and the trouble they are about to meet.
+
+    Respond with one or two sentences, no more.
     """
     |> String.trim()
   end

@@ -565,6 +565,38 @@ defmodule BotArmyRpg.Handlers.GMHandler do
 
   defp maybe_bot_autoplay(_, _, _, _), do: nil
 
+  @doc """
+  Plays the turn that is up and hands it on, waiting for it: the bot at the marker acts,
+  the GM resolves, and the marker moves to the next seat. Answers the round the marker now
+  points at. A seat a person holds is not played - the caller is told, and the marker stays.
+  """
+  def play_turn(tenant_id, session_id) do
+    with {:ok, session} <- session_store().get(tenant_id, session_id),
+         :ok <- require_session_active(session),
+         actor when is_map(actor) <-
+           session |> TurnManager.current_actor() |> kind_of(tenant_id),
+         "bot" <- actor["type"] do
+      played = maybe_bot_autoplay(actor, session, tenant_id, session_id)
+
+      with {:ok, fresh} <- session_store().get(tenant_id, session_id),
+           {:ok, updated} <-
+             session_store().update(tenant_id, session_id, %{
+               "metadata" => TurnManager.advance_turn(fresh)
+             }) do
+        {:ok,
+         %{
+           "actor" => actor,
+           "played" => played,
+           "round" => get_in(updated, ["metadata", "turn_state", "round"])
+         }}
+      end
+    else
+      nil -> {:error, :no_actor}
+      "player" -> {:error, :a_player_holds_the_seat}
+      {:error, _} = error -> error
+    end
+  end
+
   defp maybe_enqueue_bot_autoplay(
          %{"type" => "bot", "character_id" => character_id, "bot_id" => bot_id} = actor,
          session,

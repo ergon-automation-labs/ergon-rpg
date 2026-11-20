@@ -153,6 +153,16 @@ rpg-theme-cyberpunk:
 rpg-session-start:
 	@nats request --server $(NATS_SERVER) rpg.session.start '{"bot_ids":["gtd_bot","synapse","llm_bot"],"scene_description":"Neon-drenched alleyway. Three figures circle each other under a flickering hologram ad.","tenant_id":"00000000-0000-0000-0000-000000000001"}' --timeout 5s
 
+rpg-mission-start:
+	@nats request --server $(NATS_SERVER) rpg.mission.start '{"rounds":$(or $(ROUNDS),5),"tenant_id":"00000000-0000-0000-0000-000000000001"}' --timeout 60s
+
+rpg-mission-stop:
+	@if [ -z "$(SESSION_ID)" ]; then \
+	  echo "Error: SESSION_ID not set. Usage: make rpg-mission-stop SESSION_ID=e291bf79-..."; \
+	  exit 1; \
+	fi
+	@nats request --server $(NATS_SERVER) rpg.mission.stop '{"session_id":"$(SESSION_ID)","tenant_id":"00000000-0000-0000-0000-000000000001"}' --timeout 5s
+
 rpg-start-round:
 	@if [ -z "$(SESSION_ID)" ]; then \
 	  echo "Error: SESSION_ID not set. Usage: make rpg-start-round SESSION_ID=e291bf79-..."; \

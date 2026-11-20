@@ -43,6 +43,8 @@ defmodule BotArmyRpg.NATS.Publisher do
       "rpg.character.leveled_up" -> "events.rpg.character.leveled_up"
       "rpg.quest.created" -> "events.rpg.quest.created"
       "rpg.quest.completed" -> "events.rpg.quest.completed"
+      "rpg.mission.started" -> "events.rpg.mission.started"
+      "rpg.mission.finished" -> "events.rpg.mission.finished"
       "rpg.error" -> "events.rpg.error"
       _ -> "events.rpg.#{event_name}"
     end
