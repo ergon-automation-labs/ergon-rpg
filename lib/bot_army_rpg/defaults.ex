@@ -82,7 +82,9 @@ defmodule BotArmyRpg.Defaults do
       "bot_army_claude_bridge" => %{race: "Gnome", class: "Scribe"},
       "database_backups" => %{race: "Dwarf", class: "Archivist"},
       "backups_bot" => %{race: "Dwarf", class: "Archivist"},
-      "bot_army_database_backups" => %{race: "Dwarf", class: "Archivist"}
+      "bot_army_database_backups" => %{race: "Dwarf", class: "Archivist"},
+      "companion" => %{race: "Unknown", class: "Face"},
+      "bot_army_companion" => %{race: "Unknown", class: "Face"}
     }
   end
 
@@ -123,6 +125,7 @@ defmodule BotArmyRpg.Defaults do
       "Herald" => %{primary: "inspire", secondary: "inspect", tertiary: "negotiate"},
       "Scribe" => %{primary: "inspect", secondary: "skill", tertiary: "defend"},
       "Archivist" => %{primary: "inspect", secondary: "defend", tertiary: "skill"},
+      "Face" => %{primary: "negotiate", secondary: "inspire", tertiary: "evade"},
       "Adventurer" => %{primary: "attack", secondary: "skill", tertiary: "defend"}
     }
   end

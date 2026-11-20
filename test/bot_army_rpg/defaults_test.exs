@@ -53,6 +53,30 @@ defmodule BotArmyRpg.DefaultsTest do
     assert BotArmyRpg.Defaults.bot_archetype(:bot_army_synapse) == %{race: "Elf", class: "Oracle"}
   end
 
+  test "the companion is a Face, with or without the bot_army_ prefix" do
+    face = %{race: "Unknown", class: "Face"}
+
+    assert BotArmyRpg.Defaults.bot_archetype("companion") == face
+    assert BotArmyRpg.Defaults.bot_archetype("bot_army_companion") == face
+    assert BotArmyRpg.Defaults.bot_archetype(:companion) == face
+  end
+
+  test "a Face plays by talking: negotiate, inspire, then evade" do
+    assert BotArmyRpg.Defaults.class_play_styles()["Face"] == %{
+             primary: "negotiate",
+             secondary: "inspire",
+             tertiary: "evade"
+           }
+  end
+
+  test "every archetype class has a play style" do
+    styles = BotArmyRpg.Defaults.class_play_styles()
+
+    for {bot, %{class: class}} <- BotArmyRpg.Defaults.bot_archetypes() do
+      assert Map.has_key?(styles, class), "#{bot} is a #{class} with no play style"
+    end
+  end
+
   test "bot_archetype falls back to Adventurer for unknown bots" do
     assert BotArmyRpg.Defaults.bot_archetype("unknown") == %{race: "Unknown", class: "Adventurer"}
   end
