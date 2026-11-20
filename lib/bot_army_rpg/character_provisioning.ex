@@ -74,15 +74,7 @@ defmodule BotArmyRpg.CharacterProvisioning do
       end
 
     # 2. Try Soul identity name (graceful if repo is unavailable)
-    soul_name =
-      try do
-        case BotArmyLibraryRuntime.Soul.get(String.to_atom(bot_id_str)) do
-          {:ok, soul} -> get_in(soul.config, ["identity", "name"])
-          _ -> nil
-        end
-      rescue
-        _ -> nil
-      end
+    soul_name = Enum.find_value(soul_keys(bot_id_str), &soul_identity_name/1)
 
     # 3. Fallback to sanitized bot_id
     fallback =
@@ -93,6 +85,25 @@ defmodule BotArmyRpg.CharacterProvisioning do
       |> Enum.map_join(" ", &String.capitalize/1)
 
     theme_name || soul_name || fallback
+  end
+
+  @doc false
+  def soul_keys(bot_id_str) do
+    bare =
+      bot_id_str |> String.replace_prefix("bot_army_", "") |> String.replace_suffix("_bot", "")
+
+    Enum.uniq([bot_id_str, bare])
+  end
+
+  defp soul_identity_name(key) do
+    soul_module = Application.get_env(:bot_army_rpg, :soul, BotArmyLibraryRuntime.Soul)
+
+    case soul_module.get(key) do
+      {:ok, soul} -> get_in(soul.config, ["identity", "name"])
+      _ -> nil
+    end
+  rescue
+    _ -> nil
   end
 
   defp create_bot_character(bot_id_str, tenant_id, store) do

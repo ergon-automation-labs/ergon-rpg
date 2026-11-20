@@ -59,6 +59,7 @@ defmodule BotArmyRpg.DefaultsTest do
     assert BotArmyRpg.Defaults.bot_archetype("companion") == face
     assert BotArmyRpg.Defaults.bot_archetype("bot_army_companion") == face
     assert BotArmyRpg.Defaults.bot_archetype(:companion) == face
+    assert BotArmyRpg.Defaults.bot_archetype("companion_bot") == face
   end
 
   test "a Face plays by talking: negotiate, inspire, then evade" do

@@ -69,6 +69,37 @@ defmodule BotArmyRpg.CharacterProvisioningTest do
     end
   end
 
+  describe "a character is named from the soul, whichever key the soul is stored under" do
+    defmodule SoulKeyedBare do
+      def get("companion"), do: {:ok, %{config: %{"identity" => %{"name" => "Eir"}}}}
+      def get(_), do: {:ok, nil}
+    end
+
+    defmodule SoulDown do
+      def get(_), do: raise("memory service unreachable")
+    end
+
+    setup do
+      on_exit(fn -> Application.delete_env(:bot_army_rpg, :soul) end)
+    end
+
+    test "companion_bot finds the soul stored as companion" do
+      Application.put_env(:bot_army_rpg, :soul, SoulKeyedBare)
+      assert CharacterProvisioning.bot_character_name("companion_bot", nil) == "Eir"
+    end
+
+    test "the key the bot gave is tried first, then the bare name" do
+      assert CharacterProvisioning.soul_keys("companion_bot") == ["companion_bot", "companion"]
+      assert CharacterProvisioning.soul_keys("bot_army_gtd") == ["bot_army_gtd", "gtd"]
+      assert CharacterProvisioning.soul_keys("synapse") == ["synapse"]
+    end
+
+    test "an unreachable soul service falls back to the bot's own name" do
+      Application.put_env(:bot_army_rpg, :soul, SoulDown)
+      assert CharacterProvisioning.bot_character_name("companion_bot", nil) == "Companion Bot"
+    end
+  end
+
   describe "stats follow the current theme" do
     @tenant "00000000-0000-0000-0000-000000000001"
 

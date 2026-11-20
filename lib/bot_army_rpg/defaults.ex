@@ -84,6 +84,7 @@ defmodule BotArmyRpg.Defaults do
       "backups_bot" => %{race: "Dwarf", class: "Archivist"},
       "bot_army_database_backups" => %{race: "Dwarf", class: "Archivist"},
       "companion" => %{race: "Unknown", class: "Face"},
+      "companion_bot" => %{race: "Unknown", class: "Face"},
       "bot_army_companion" => %{race: "Unknown", class: "Face"}
     }
   end
