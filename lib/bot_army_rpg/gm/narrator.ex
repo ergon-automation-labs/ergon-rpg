@@ -223,14 +223,24 @@ defmodule BotArmyRpg.GM.Narrator do
   defp fallback_action(action, resolution, theme, archetype, character) do
     vocab = theme["vocabulary"] || %{}
     outcome = resolution["outcome"]
-    verb = Map.get(vocab, action["action_type"], action["action_type"])
+    action_type = action["action_type"]
 
     actor =
       case archetype do
-        {:themed, _} -> Archetype.display_label(archetype)
-        _ -> action["description"] || (character && character["name"]) || "The character"
+        {:themed, _} ->
+          Archetype.display_label(archetype)
+
+        _ ->
+          named(theme, character) || action["description"] || "The character"
       end
 
+    case Map.fetch(vocab, action_type) do
+      {:ok, verb} -> vocabulary_line(actor, verb, outcome)
+      :error -> attempt_line(actor, verb_of(action_type), outcome)
+    end
+  end
+
+  defp vocabulary_line(actor, verb, outcome) do
     case outcome do
       "critical_success" -> "#{actor} executes a masterful #{verb}!"
       "success" -> "#{actor} #{verb}s with skill."
@@ -239,4 +249,29 @@ defmodule BotArmyRpg.GM.Narrator do
       _ -> "#{actor} #{verb}s."
     end
   end
+
+  # An action the vocabulary does not name is told as an attempt, so the verb stands as the
+  # theme wrote it and is never conjugated.
+  defp attempt_line(actor, verb, outcome) do
+    case outcome do
+      "critical_success" -> "#{actor} tries to #{verb}, and it goes brilliantly!"
+      "success" -> "#{actor} tries to #{verb}, and it works."
+      "failure" -> "#{actor} tries to #{verb}, but falls short."
+      "critical_failure" -> "#{actor} tries to #{verb}, and it goes disastrously wrong!"
+      _ -> "#{actor} tries to #{verb}."
+    end
+  end
+
+  # A theme may write an action as "persuade (negotiate with fixers...)": the verb is what
+  # comes before the description.
+  defp verb_of(action_type) when is_binary(action_type) do
+    action_type |> String.split(" (", parts: 2) |> hd() |> String.trim()
+  end
+
+  defp verb_of(_), do: "act"
+
+  defp named(theme, %{"name" => name} = character) when is_binary(name) and name != "",
+    do: Archetype.display_name(theme, character)
+
+  defp named(_theme, _character), do: nil
 end

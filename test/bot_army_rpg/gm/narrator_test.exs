@@ -209,6 +209,56 @@ defmodule BotArmyRpg.GM.NarratorTest do
     end
   end
 
+  describe "fallback prose for a theme whose action names carry a description" do
+    @neon_theme %{
+      "vocabulary" => %{"hack" => "ICE through the black market net"},
+      "npc_personas" => %{}
+    }
+
+    defp neon_line(action_type, outcome, name \\ "Eir") do
+      character = %{"bot_id" => "companion_bot", "name" => name}
+      action = %{"action_type" => action_type, "description" => "#{name} acts."}
+      resolution = %{"outcome" => outcome, "total" => 14, "dc" => 12}
+      {:ok, line} = Narrator.narrate_action(action, resolution, @neon_theme, character)
+      line
+    end
+
+    test "says the verb, not the whole action string, and does not conjugate it with an s" do
+      line =
+        neon_line("conspire (work with resistance or corp double agents)", "critical_failure")
+
+      assert line == "Eir tries to conspire, and it goes disastrously wrong!"
+      refute line =~ "("
+      refute line =~ "conspires"
+    end
+
+    test "each outcome has its own ending" do
+      action = "persuade (negotiate with fixers, corps, or gang leaders)"
+
+      assert neon_line(action, "critical_success") ==
+               "Eir tries to persuade, and it goes brilliantly!"
+
+      assert neon_line(action, "success") == "Eir tries to persuade, and it works."
+      assert neon_line(action, "failure") == "Eir tries to persuade, but falls short."
+      assert neon_line(action, "something_else") == "Eir tries to persuade."
+    end
+
+    test "a multi-word verb stays whole" do
+      assert neon_line("jack in (enter cyberspace)", "success") ==
+               "Eir tries to jack in, and it works."
+    end
+
+    test "the actor is the character's name, not the description sentence" do
+      line = neon_line("hack (breach corporate systems or ICE)", "failure", "Mara Voss")
+      assert String.starts_with?(line, "Mara Voss tries to hack")
+      refute line =~ "acts."
+    end
+
+    test "an action the theme's vocabulary names exactly keeps its vocabulary phrasing" do
+      assert neon_line("hack", "success") == "Eir ICE through the black market nets with skill."
+    end
+  end
+
   describe "the LLM call" do
     test "the prompt is sent in the field the bot reads, and the prose is its answer" do
       Application.put_env(:bot_army_rpg, :nats_publisher, SpeakingPublisher)
