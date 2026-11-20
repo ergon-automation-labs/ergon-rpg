@@ -161,6 +161,38 @@ defmodule BotArmyRpg.GM.LlmJobTest do
     refute Map.has_key?(payload, "source")
   end
 
+  test "the model is given its own long clock, not the bot's three-minute default" do
+    bus(%{"llm.request.chat" => [@accepted], "llm.job.status" => [done("ok")]})
+
+    assert {:ok, "ok"} = LlmJob.ask("x")
+    assert [{_, payload}] = Bus.calls("llm.request.chat")
+    assert payload["timeout_ms"] == 600_000
+  end
+
+  test "the model's clock is configuration, and unset it is left to the bot" do
+    bus(%{"llm.request.chat" => [@accepted, @accepted], "llm.job.status" => [done("ok")]})
+
+    Application.put_env(:bot_army_rpg, :llm_model_timeout_ms, 240_000)
+    on_exit(fn -> Application.delete_env(:bot_army_rpg, :llm_model_timeout_ms) end)
+    assert {:ok, "ok"} = LlmJob.ask("x")
+
+    Application.put_env(:bot_army_rpg, :llm_model_timeout_ms, nil)
+    assert {:ok, "ok"} = LlmJob.ask("y")
+
+    assert [{_, first}, {_, second}] = Bus.calls("llm.request.chat")
+    assert first["timeout_ms"] == 240_000
+    refute Map.has_key?(second, "timeout_ms")
+  end
+
+  test "no source, no model clock: it only means something to the local source" do
+    bus(%{"llm.request.chat" => [@accepted], "llm.job.status" => [done("ok")]})
+    Application.put_env(:bot_army_rpg, :llm_source, nil)
+
+    assert {:ok, "ok"} = LlmJob.ask("x")
+    assert [{_, payload}] = Bus.calls("llm.request.chat")
+    refute Map.has_key?(payload, "timeout_ms")
+  end
+
   test "the default budget is minutes, not seconds" do
     assert LlmJob.default_wait_ms() >= 600_000
   end
