@@ -119,6 +119,11 @@ defmodule BotArmyRpg.GM.Mission do
     )
 
     Logger.info("[Mission] #{session_id} finished: #{why}")
+
+    case Application.get_env(:bot_army_rpg, :mission_finished_notify) do
+      pid when is_pid(pid) -> send(pid, {:mission_finished, session_id})
+      _ -> :ok
+    end
   end
 
   defp rounds_of(n) when is_integer(n) and n >= 1, do: min(n, @max_rounds)

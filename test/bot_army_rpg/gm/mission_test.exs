@@ -156,6 +156,7 @@ defmodule BotArmyRpg.GM.MissionTest do
     Application.put_env(:bot_army_rpg, :scene_fact_store, SceneFactStore)
     Application.put_env(:bot_army_rpg, :party_store, PartyStore)
     Application.put_env(:bot_army_rpg, :nats_publisher, Model)
+    Application.put_env(:bot_army_rpg, :mission_finished_notify, self())
 
     on_exit(fn ->
       for key <- [
@@ -164,7 +165,8 @@ defmodule BotArmyRpg.GM.MissionTest do
             :theme_store,
             :scene_fact_store,
             :party_store,
-            :nats_publisher
+            :nats_publisher,
+            :mission_finished_notify
           ],
           do: Application.delete_env(:bot_army_rpg, key)
     end)
@@ -186,10 +188,15 @@ defmodule BotArmyRpg.GM.MissionTest do
   end
 
   defp ended(session_id) do
-    settle(fn ->
-      {:ok, s} = SessionStore.get(@tenant, session_id)
-      if s["status"] == "ended", do: {:settled, s}, else: :waiting
-    end)
+    session =
+      settle(fn ->
+        {:ok, s} = SessionStore.get(@tenant, session_id)
+        if s["status"] == "ended", do: {:settled, s}, else: :waiting
+      end)
+
+    assert_receive {:mission_finished, ^session_id}, 5_000
+    {:ok, session} = SessionStore.get(@tenant, session_id)
+    session
   end
 
   describe "crew/4" do
