@@ -31,9 +31,11 @@ defmodule BotArmyRpg.GM.BotPlayer do
   # --- Class → action mapping ---
 
   defp class_action("Face", valid, round) when is_integer(round) and rem(round, 2) == 0,
-    do: pick(valid, "inspire", "negotiate", "evade")
+    do: pick_first(valid, ["inspire", "conspire", "negotiate", "evade"])
 
-  defp class_action("Face", valid, _round), do: pick(valid, "negotiate", "inspire", "evade")
+  defp class_action("Face", valid, _round),
+    do: pick_first(valid, ["negotiate", "inspire", "conspire", "evade"])
+
   defp class_action(class, valid, _round), do: class_action(class, valid)
 
   defp round_of(session), do: get_in(session, ["metadata", "turn_state", "round"])
@@ -51,8 +53,10 @@ defmodule BotArmyRpg.GM.BotPlayer do
   defp class_action("Archivist", valid), do: pick(valid, "inspect", "defend", "skill")
   defp class_action(_, valid), do: pick(valid, "attack", "skill", "defend")
 
-  defp pick(valid, a, b, c) do
-    find(valid, a) || find(valid, b) || find(valid, c) || List.first(valid) || "attack"
+  defp pick(valid, a, b, c), do: pick_first(valid, [a, b, c])
+
+  defp pick_first(valid, intents) do
+    Enum.find_value(intents, &find(valid, &1)) || List.first(valid) || "attack"
   end
 
   # A theme may name an action with its own description - "persuade (negotiate with

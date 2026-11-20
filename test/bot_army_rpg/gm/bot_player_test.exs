@@ -37,6 +37,11 @@ defmodule BotArmyRpg.GM.BotPlayerTest do
       assert decide("Face", plain, 3) == "negotiate"
     end
 
+    test "conspiring stands in for inspiring only when there is no inspire" do
+      assert decide("Face", ["conspire (x)", "inspire", "negotiate"], 2) == "inspire"
+      assert decide("Face", ["conspire (x)", "negotiate"], 1) == "negotiate"
+    end
+
     test "a Face whose round is unknown negotiates" do
       assert BotPlayer.decide_action(
                "x",
@@ -61,9 +66,9 @@ defmodule BotArmyRpg.GM.BotPlayerTest do
                "persuade (negotiate with fixers, corps, or gang leaders)"
     end
 
-    test "a Face asked to inspire, where the theme has no such action, negotiates instead" do
+    test "a Face's inspiring is conspiring where the theme has no inspire" do
       assert decide("Face", @neon_actions, 2) ==
-               "persuade (negotiate with fixers, corps, or gang leaders)"
+               "conspire (work with resistance or corp double agents)"
     end
 
     test "other classes find their own actions instead of all taking the first one" do
