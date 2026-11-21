@@ -266,6 +266,18 @@ defmodule BotArmyRpg.NATS.Consumer do
         "Send the leader (Eir) and two random bot crew on a mission with no player; the GM sets the scene"
     },
     %{
+      subject: "rpg.mission.recent",
+      type: :request_reply,
+      description:
+        "A leader's finished missions that played, newest first (leader_bot_id, since, limit)"
+    },
+    %{
+      subject: "rpg.mission.debrief",
+      type: :request_reply,
+      description:
+        "What one finished mission left to tell: scene, party, turns and the GM's lines, witness-scoped"
+    },
+    %{
       subject: "rpg.mission.stop",
       type: :request_reply,
       description: "End a mission's table; the driver plays no further turn"
@@ -560,6 +572,12 @@ defmodule BotArmyRpg.NATS.Consumer do
 
       "rpg.mission.start" ->
         BotArmyRpg.GM.Mission.start(body["payload"] || body)
+
+      "rpg.mission.recent" ->
+        BotArmyRpg.GM.MissionRecord.recent(body["payload"] || body)
+
+      "rpg.mission.debrief" ->
+        BotArmyRpg.GM.MissionRecord.debrief(body["payload"] || body)
 
       "rpg.mission.stop" ->
         BotArmyRpg.GM.Mission.stop(body["payload"] || body)

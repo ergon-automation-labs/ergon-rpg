@@ -259,11 +259,12 @@ defmodule BotArmyRpg.GM.Narrator do
 
   # A theme may write an action as "persuade (negotiate with fixers...)": the verb is what
   # comes before the description.
-  defp verb_of(action_type) when is_binary(action_type) do
+  @doc false
+  def verb_of(action_type) when is_binary(action_type) do
     action_type |> String.split(" (", parts: 2) |> hd() |> String.trim()
   end
 
-  defp verb_of(_), do: "act"
+  def verb_of(_), do: "act"
 
   defp persona_name(%{"name" => name}) when is_binary(name) and name != "", do: name
   defp persona_name(_persona), do: nil
