@@ -98,6 +98,29 @@ defmodule BotArmyRpg.Themes.Archetype do
 
   def prompt_hint(_), do: ""
 
+  @doc """
+  Like `prompt_hint/1`, for an actor with a name of her own.
+
+  A default archetype's title is the race and the class ("Unknown Face"): it describes a kind of
+  actor and was never a name, and a model told "the actor is a Unknown Face" called her that. With a
+  name, the hint is `"<name> is a <class>."`, and the race is said only when the archetype has one.
+  A themed persona already carries its own name.
+  """
+  def prompt_hint({:default, %{"class" => class} = arch}, name)
+      when is_binary(name) and name != "" and is_binary(class) do
+    kind = [known_race(arch["race"]), class] |> Enum.reject(&is_nil/1) |> Enum.join(" ")
+    "#{name} is #{article(kind)} #{kind}."
+  end
+
+  def prompt_hint(archetype, _name), do: prompt_hint(archetype)
+
+  defp known_race(race) when is_binary(race) and race not in ["", "Unknown"], do: race
+  defp known_race(_race), do: nil
+
+  defp article(word) do
+    if String.match?(word, ~r/^[AEIOUaeiou]/), do: "an", else: "a"
+  end
+
   defp hinted_actor(name) when is_binary(name) and name != "", do: name
   defp hinted_actor(_name), do: "The actor"
 

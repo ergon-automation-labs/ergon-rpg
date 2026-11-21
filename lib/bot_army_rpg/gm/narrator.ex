@@ -55,7 +55,7 @@ defmodule BotArmyRpg.GM.Narrator do
   """
   def narrate_action(action, resolution, theme, character \\ nil) do
     archetype = Archetype.for_character(theme, character || %{})
-    prompt = build_action_prompt(action, resolution, theme, archetype)
+    prompt = build_action_prompt(action, resolution, theme, archetype, character)
 
     case call_llm(prompt, action_wait_ms()) do
       {:ok, text} -> {:ok, text}
@@ -133,31 +133,37 @@ defmodule BotArmyRpg.GM.Narrator do
     A small party of adventurers is being sent on a mission. Set the opening situation: where
     they are, what is at stake, and the trouble they are about to meet.
 
+    Tell it in the third person, about "the party": never address anyone as "you". Plain prose:
+    no markdown, no bold, no lists.
+
     Respond with one or two sentences, no more.
     """
     |> String.trim()
   end
 
-  defp build_action_prompt(action, resolution, theme, archetype) do
+  defp build_action_prompt(action, resolution, theme, archetype, character) do
     setting = theme["setting"] || "unknown realm"
     tone = theme["tone"] || "neutral"
     vocab = theme["vocabulary"] || %{}
 
-    name = action["description"] || "Someone"
-    action_type = action["action_type"] || "acts"
+    who = who_acts(theme, action, character)
+    verb = verb_of(action["action_type"])
     total = resolution["total"]
     dc = resolution["dc"]
     outcome = resolution["outcome"]
 
+    # The list is flavor, not a script: a model given it with no instruction splices the phrases
+    # verbatim ("an ICE through the black market net negotiation") and bolds them.
     vocab_text =
       if vocab == %{} do
         ""
       else
-        "Use these vocabulary substitutions where natural: " <>
+        "Flavor words for this setting, to be used sparingly and only where they read naturally - " <>
+          "never quote a phrase from this list into a sentence it does not fit: " <>
           Enum.map_join(vocab, ", ", fn {k, v} -> "#{k} → #{v}" end) <> "."
       end
 
-    archetype_text = Archetype.prompt_hint(archetype)
+    archetype_text = Archetype.prompt_hint(archetype, who_name(theme, character))
 
     """
     You are the Game Master narrating an action in a #{setting} setting with a #{tone} tone.
@@ -166,13 +172,24 @@ defmodule BotArmyRpg.GM.Narrator do
 
     #{archetype_text}
 
-    #{name} attempts a #{action_type}.
+    #{who} tries to #{verb}.
     Roll: #{total} vs DC #{dc}. Outcome: #{outcome}.
 
-    Respond with a single vivid sentence describing what happens.
+    Respond with a single vivid sentence describing what happens, in plain prose: no markdown, no bold, no lists.
     """
     |> String.trim()
   end
+
+  # Who acts, by name: the character's (a persona's own name when the theme has one), and only
+  # without a character does the description sentence stand in for it.
+  defp who_acts(theme, action, character) do
+    who_name(theme, character) || action["description"] || "Someone"
+  end
+
+  defp who_name(theme, %{"name" => name} = character) when is_binary(name) and name != "",
+    do: Archetype.display_name(theme, character)
+
+  defp who_name(_theme, _character), do: nil
 
   # --- LLM call ---
 

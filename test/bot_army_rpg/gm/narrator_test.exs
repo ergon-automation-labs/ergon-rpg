@@ -325,6 +325,118 @@ defmodule BotArmyRpg.GM.NarratorTest do
     def publish(_subject, _payload, _opts), do: :ok
   end
 
+  describe "what the GM is told about who acts" do
+    @neon_prompt_theme %{
+      "setting" => "Neon Nexus City",
+      "tone" => "high-tech low-life",
+      "vocabulary" => %{
+        "hack" => "ICE through the black market net",
+        "inspect" => "slice the network"
+      },
+      "npc_personas" => %{
+        "fixer" => %{"name" => "Mara Voss", "title" => "Fixer", "bot_assignments" => ["gtd"]}
+      }
+    }
+
+    # The echoing publisher hands the prompt back as the completion, so the prompt is the narration.
+    defp prompt_for(
+           character,
+           action_type \\ "persuade (negotiate with fixers, corps, or gang leaders)"
+         ) do
+      Application.put_env(:bot_army_rpg, :nats_publisher, EchoingPublisher)
+
+      {:ok, prompt} =
+        Narrator.narrate_action(
+          %{"action_type" => action_type, "description" => "#{character["name"]} acts."},
+          %{"outcome" => "success", "total" => 14, "dc" => 12},
+          @neon_prompt_theme,
+          character
+        )
+
+      prompt
+    end
+
+    @eir %{"bot_id" => "companion_bot", "name" => "Eir"}
+
+    test "a character with no persona is called by her name, never by her archetype's title" do
+      prompt = prompt_for(@eir)
+
+      assert prompt =~ "Eir is a Face."
+      refute prompt =~ "Unknown"
+    end
+
+    test "a race the archetype does know is kept, and the article agrees" do
+      prompt = prompt_for(%{"bot_id" => "synapse_x", "name" => "Ori"})
+      refute prompt =~ "Unknown"
+      assert prompt =~ "Ori is an Adventurer."
+
+      assert prompt_for(%{"bot_id" => "unmapped_bot", "name" => "Pell"}) =~
+               "Pell is an Adventurer."
+    end
+
+    test "the action is the verb, in the character's name, not the description sentence and the theme's gloss" do
+      prompt = prompt_for(@eir)
+
+      assert prompt =~ "Eir tries to persuade."
+      refute prompt =~ "Eir acts."
+      refute prompt =~ "(negotiate with"
+    end
+
+    test "a persona keeps being named, and acts by name too" do
+      prompt =
+        prompt_for(
+          %{"bot_id" => "gtd_bot", "name" => "The Lorekeeper"},
+          "hack (breach corporate systems or ICE)"
+        )
+
+      assert prompt =~ "Mara Voss presents as a Fixer."
+      assert prompt =~ "Mara Voss tries to hack."
+      refute prompt =~ "Lorekeeper"
+    end
+
+    test "it asks for plain prose and for the flavor words to be used sparingly" do
+      prompt = prompt_for(@eir)
+
+      assert prompt =~ "plain prose"
+      assert prompt =~ "no markdown"
+      assert prompt =~ "never quote"
+    end
+
+    test "with no character at all, the description names who acts, as before" do
+      Application.put_env(:bot_army_rpg, :nats_publisher, EchoingPublisher)
+
+      assert {:ok, prompt} =
+               Narrator.narrate_action(
+                 %{"action_type" => "attack", "description" => "An anonymous attacker"},
+                 %{"outcome" => "success"},
+                 @neon_prompt_theme
+               )
+
+      assert prompt =~ "An anonymous attacker"
+    end
+  end
+
+  describe "what the GM is told about a mission's opening scene" do
+    test "it is told the party's story is told in the third person, in plain prose" do
+      Application.put_env(:bot_army_rpg, :nats_publisher, EchoingPublisher)
+
+      assert {:ok, prompt} =
+               Narrator.set_scene(%{"setting" => "Neon Nexus City", "tone" => "grim"})
+
+      assert prompt =~ "third person"
+      assert prompt =~ "never address"
+      assert prompt =~ ~r/plain prose/i
+      assert prompt =~ "no markdown"
+    end
+
+    test "a scene for a player's own table is not changed: it is still spoken to her" do
+      Application.put_env(:bot_army_rpg, :nats_publisher, EchoingPublisher)
+      assert {:ok, prompt} = Narrator.narrate_scene("a hall", %{"setting" => "x"}, [])
+
+      refute prompt =~ "third person"
+    end
+  end
+
   describe "where the GM's words are written" do
     setup do
       Application.put_env(:bot_army_rpg, :nats_publisher, RecordingPublisher)
