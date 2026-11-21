@@ -11,7 +11,8 @@ defmodule BotArmyRpg.GM.LlmJob do
 
   The bot's canned fallback (`degraded: true`) is never prose: the GM refuses it by name.
   Where the words are written is configuration: `config :bot_army_rpg, :llm_source` (default
-  `"local_ollama"`; `nil` walks the default chain), `:llm_job_poll_ms`, `:llm_job_wait_ms`, and `:llm_model_timeout_ms` (how long the local
+  `"local_ollama"`; `nil` walks the default chain), `:llm_job_poll_ms`, `:llm_job_wait_ms`, `:llm_think` (default `false`: no hidden
+  reasoning), and `:llm_model_timeout_ms` (how long the local
   model itself may run; default 600 s, `nil` leaves it to the bot's own default).
   """
 
@@ -112,7 +113,7 @@ defmodule BotArmyRpg.GM.LlmJob do
   defp with_source(payload) do
     case Application.get_env(:bot_army_rpg, :llm_source, "local_ollama") do
       source when is_binary(source) and source != "" ->
-        payload |> Map.put("source", source) |> with_model_timeout()
+        payload |> Map.put("source", source) |> with_model_timeout() |> with_think()
 
       _ ->
         payload
@@ -125,6 +126,17 @@ defmodule BotArmyRpg.GM.LlmJob do
   defp with_model_timeout(payload) do
     case Application.get_env(:bot_army_rpg, :llm_model_timeout_ms, @default_model_timeout_ms) do
       ms when is_integer(ms) and ms > 0 -> Map.put(payload, "timeout_ms", ms)
+      _ -> payload
+    end
+  end
+
+  # A reasoning model on its default settings spends its answer on hidden thinking: measured 2026-11-20
+  # on mini, one sentence took 99 s (19,593 characters of thinking) and 2 s with `think: false`, and
+  # every turn line the GM asked for ran past its wait and fell back to the template. The RSS sieve has
+  # always sent it. `config :bot_army_rpg, :llm_think, nil` leaves it to the model's own default.
+  defp with_think(payload) do
+    case Application.get_env(:bot_army_rpg, :llm_think, false) do
+      think when is_boolean(think) -> Map.put(payload, "think", think)
       _ -> payload
     end
   end

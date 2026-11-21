@@ -193,6 +193,40 @@ defmodule BotArmyRpg.GM.LlmJobTest do
     refute Map.has_key?(payload, "timeout_ms")
   end
 
+  test "the model is told not to think: a reasoning model spends the whole answer on hidden thinking" do
+    # Measured 2026-11-20 on mini: one sentence took 99 s with default settings (19,593 characters of
+    # hidden thinking) and 2 s with think false. The sieve has always sent it.
+    bus(%{"llm.request.chat" => [@accepted], "llm.job.status" => [done("ok")]})
+
+    assert {:ok, "ok"} = LlmJob.ask("x")
+    assert [{_, payload}] = Bus.calls("llm.request.chat")
+    assert payload["think"] == false
+  end
+
+  test "thinking is configuration: nil leaves it to the model's own default" do
+    bus(%{"llm.request.chat" => [@accepted, @accepted], "llm.job.status" => [done("ok")]})
+    on_exit(fn -> Application.delete_env(:bot_army_rpg, :llm_think) end)
+
+    Application.put_env(:bot_army_rpg, :llm_think, true)
+    assert {:ok, "ok"} = LlmJob.ask("x")
+
+    Application.put_env(:bot_army_rpg, :llm_think, nil)
+    assert {:ok, "ok"} = LlmJob.ask("y")
+
+    assert [{_, first}, {_, second}] = Bus.calls("llm.request.chat")
+    assert first["think"] == true
+    refute Map.has_key?(second, "think")
+  end
+
+  test "no source, no think field: it is a setting of the local models" do
+    bus(%{"llm.request.chat" => [@accepted], "llm.job.status" => [done("ok")]})
+    Application.put_env(:bot_army_rpg, :llm_source, nil)
+
+    assert {:ok, "ok"} = LlmJob.ask("x")
+    assert [{_, payload}] = Bus.calls("llm.request.chat")
+    refute Map.has_key?(payload, "think")
+  end
+
   test "the default budget is minutes, not seconds" do
     assert LlmJob.default_wait_ms() >= 600_000
   end
